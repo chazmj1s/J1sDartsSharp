@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Domain layer: league entities and (Phase 2) PairingService.
+    No EF Core, no MAUI references. Depends only on Shared.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>J1sDartSharp.Core</RootNamespace>
+    <AssemblyName>J1sDartSharp.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\J1sDartSharp.Shared\J1sDartSharp.Shared.csproj" />
+  </ItemGroup>
+
+  <!-- Every Core file sees the shared enums and rules without per-file usings. -->
+  <ItemGroup>
+    <Using Include="J1sDartSharp.Shared.Enums" />
+    <Using Include="J1sDartSharp.Shared.Constants" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Lowest layer: contracts shared by the MAUI app, Core, and the Api.
+    Enums, league constants, and (Phase 2) API request/response DTOs.
+    References nothing — the app can depend on this without pulling in
+    domain entities or EF.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>J1sDartSharp.Shared</RootNamespace>
+    <AssemblyName>J1sDartSharp.Shared</AssemblyName>
+  </PropertyGroup>
+
+</Project>
