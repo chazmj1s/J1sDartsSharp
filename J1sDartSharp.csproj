@@ -23,11 +23,19 @@
 
     <UIRequiresFullScreen>true</UIRequiresFullScreen>
     <GenerateMauiIcons>true</GenerateMauiIcons>
+
+    <!--
+      The Shared, Core and Api projects live in subfolders of this project's folder.
+      Without this, the SDK's default **/*.cs (and *.razor) globs would compile
+      their source into the app — including EF Core code on iOS.
+      Harmless if the folders don't exist.
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);J1sDartSharp.Shared\**;J1sDartSharp.Core\**;J1sDartSharp.Api\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows' and '$(RuntimeIdentifierOverride)' != ''">
-		<RuntimeIdentifier>$(RuntimeIdentifierOverride)</RuntimeIdentifier>
-  </PropertyGroup>	
+    <RuntimeIdentifier>$(RuntimeIdentifierOverride)</RuntimeIdentifier>
+  </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Maui.Controls" Version="9.0.30" />
@@ -35,6 +43,14 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.0" />
     <PackageReference Include="sqlite-net-pcl" Version="1.9.172" />
     <PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.8" />
+  </ItemGroup>
+
+  <!--
+    The app talks to league data only through the Api, so it depends on
+    Shared (enums, rules, DTOs) — not on Core entities or the Api project.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="J1sDartSharp.Shared\J1sDartSharp.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Aligned with the MAUI app (net9.0 / Maui 9.0.x). -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>J1sDartSharp.Api</RootNamespace>
+    <AssemblyName>J1sDartSharp.Api</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\J1sDartSharp.Shared\J1sDartSharp.Shared.csproj" />
+    <ProjectReference Include="..\J1sDartSharp.Core\J1sDartSharp.Core.csproj" />
+  </ItemGroup>
+
+  <!-- LeagueDbContext configures enum conversions; no per-file using needed. -->
+  <ItemGroup>
+    <Using Include="J1sDartSharp.Shared.Enums" />
+  </ItemGroup>
+
+</Project>
