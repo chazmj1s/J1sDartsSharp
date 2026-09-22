@@ -1,6 +1,6 @@
-using DartsPractice.Models;
+using J1sDartSharp.Models;
 
-namespace DartsPractice.Services;
+namespace J1sDartSharp.Services;
 
 /// <summary>
 /// Thin facade over DartsDatabase.

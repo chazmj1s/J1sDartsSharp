@@ -61,7 +61,7 @@ Tracks practice sessions across three darts games with per-dart granularity:
 ## Architecture
 
 ```
-DartsPractice/
+J1sDartSharp/
 ├── Models/              # Session models, DartThrow, stats POCOs
 ├── Data/                # SQLite table DTOs (DbModels.cs)
 ├── Services/            # DartsDatabase, SessionHistoryService, CheckoutService

@@ -1,6 +1,6 @@
 using SQLite;
 
-namespace DartsPractice.Data;
+namespace J1sDartSharp.Data;
 
 /// <summary>
 /// SQLite row for every completed or abandoned session.

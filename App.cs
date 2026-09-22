@@ -1,7 +1,7 @@
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 
-namespace DartsPractice;
+namespace J1sDartSharp;
 
 public class App : Application
 {

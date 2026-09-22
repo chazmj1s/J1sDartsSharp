@@ -1,7 +1,7 @@
 using ObjCRuntime;
 using UIKit;
 
-namespace DartsPractice;
+namespace J1sDartSharp;
 
 public class Program
 {

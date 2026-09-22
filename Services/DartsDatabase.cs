@@ -1,8 +1,8 @@
-using DartsPractice.Models;
+using J1sDartSharp.Models;
 using SQLite;
-using DartsPractice.Data;
+using J1sDartSharp.Data;
 
-namespace DartsPractice.Services;
+namespace J1sDartSharp.Services;
 
 /// <summary>
 /// Persistent SQLite store for all practice sessions and dart-level logs.
@@ -18,7 +18,7 @@ public class DartsDatabase
         if (_initialised) return;
         _initialised = true;
 
-        var dbPath = Path.Combine(FileSystem.AppDataDirectory, "darts_practice.db3");
+        var dbPath = Path.Combine(FileSystem.AppDataDirectory, "j1sdartsharp.db3");
         _db = new SQLiteAsyncConnection(dbPath,
             SQLiteOpenFlags.ReadWrite | SQLiteOpenFlags.Create | SQLiteOpenFlags.SharedCache);
 

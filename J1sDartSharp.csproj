@@ -10,10 +10,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
-    <RootNamespace>DartsPractice</RootNamespace>
+    <RootNamespace>J1sDartSharp</RootNamespace>
 
-    <ApplicationTitle>Dart Sharp 180</ApplicationTitle>
-    <ApplicationId>com.dartspractice.app</ApplicationId>
+    <ApplicationTitle>J1s Dart Sharp</ApplicationTitle>
+    <ApplicationId>com.j1sdartsharp.app</ApplicationId>
 
     <ApplicationVersion>1</ApplicationVersion>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
@@ -24,6 +24,10 @@
     <UIRequiresFullScreen>true</UIRequiresFullScreen>
     <GenerateMauiIcons>true</GenerateMauiIcons>
   </PropertyGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows' and '$(RuntimeIdentifierOverride)' != ''">
+		<RuntimeIdentifier>$(RuntimeIdentifierOverride)</RuntimeIdentifier>
+  </PropertyGroup>	
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Maui.Controls" Version="9.0.30" />

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
-using DartsPractice.Services;
+using J1sDartSharp.Services;
 
-namespace DartsPractice;
+namespace J1sDartSharp;
 
 public static class MauiProgram
 {

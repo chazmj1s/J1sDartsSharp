@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Components.WebView.Maui;
 using Microsoft.Maui.Controls;
 
-namespace DartsPractice;
+namespace J1sDartSharp;
 
 public class MainPage : ContentPage
 {

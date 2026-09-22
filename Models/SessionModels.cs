@@ -1,4 +1,4 @@
-namespace DartsPractice.Models;
+namespace J1sDartSharp.Models;
 
 // ── Shared ──────────────────────────────────────────────────────────────────
 

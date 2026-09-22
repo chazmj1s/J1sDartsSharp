@@ -1,4 +1,4 @@
-namespace DartsPractice.Services;
+namespace J1sDartSharp.Services;
 
 /// <summary>
 /// Standard darts checkout suggestions.

@@ -1,7 +1,7 @@
 using Microsoft.Maui;
 using Microsoft.UI.Xaml;
 
-namespace DartsPractice.WinUI;
+namespace J1sDartSharp.WinUI;
 
 public partial class App : MauiWinUIApplication
 {

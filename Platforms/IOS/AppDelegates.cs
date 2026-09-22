@@ -1,6 +1,6 @@
 using Foundation;
 
-namespace DartsPractice;
+namespace J1sDartSharp;
 
 [Register("AppDelegate")]
 public class AppDelegate : MauiUIApplicationDelegate
