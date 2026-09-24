@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace J1sDartSharp.Core.Models;
 
 /// <summary>
@@ -40,6 +42,14 @@ public class Game : ITimestamped
     /// Rails: Game#home_players. Requires GameParticipants (and each
     /// participant's Player) to be loaded.
     /// </summary>
+    /// <remarks>
+    /// [NotMapped] is required. EF discovers get-only properties of an entity
+    /// type (here IEnumerable&lt;Player&gt;) as collection navigations, so without
+    /// it EF invents a Game→Player one-to-many with a shadow GameId column on
+    /// Players, then crashes during change tracking trying to add to this
+    /// LINQ iterator. The attribute lives in the BCL, so Core stays EF-free.
+    /// </remarks>
+    [NotMapped]
     public IEnumerable<Player> HomePlayers =>
         GameParticipants.Where(p => p.Side == ParticipantSide.Home).Select(p => p.Player);
 }

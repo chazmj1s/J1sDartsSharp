@@ -1,0 +1,128 @@
+@page "/league/players"
+@using J1sDartSharp.Services
+@using J1sDartSharp.Shared.Enums
+@using J1sDartSharp.ViewModels.League
+@implements IDisposable
+@inject ILeagueApiClient Api
+
+@* Port of app/views/players/index.html.erb *@
+
+<div class="league-page">
+
+    <div class="page-header">
+        <h2>Roster</h2>
+        @if (_vm.CanAddPlayer)
+        {
+            <a href="/league/players/new" class="btn btn-primary league-btn-sm">＋ Add</a>
+        }
+    </div>
+
+    @if (_vm.Roster is null)
+    {
+        @if (_vm.IsLoading)
+        {
+            <div class="league-loading">Loading roster…</div>
+        }
+        else if (_vm.Error is not null)
+        {
+            <div class="league-alert league-alert-error">
+                <p>⚠ @_vm.Error</p>
+                <button class="btn btn-secondary league-btn-sm" @onclick="Reload">Retry</button>
+            </div>
+        }
+    }
+    else
+    {
+        var roster = _vm.Roster;
+
+        @* ── Stats row ─────────────────────────────────────── *@
+        <div class="league-stats">
+            <div class="stat-item"><span class="stat-label">Players</span><span class="stat-value">@roster.Total</span></div>
+            <div class="stat-item"><span class="stat-label">Women</span><span class="stat-value">@roster.Female</span></div>
+            <div class="stat-item"><span class="stat-label">Men</span><span class="stat-value">@roster.Male</span></div>
+            <div class="stat-item"><span class="stat-label">Open</span><span class="stat-value">@roster.OpenSlots</span></div>
+        </div>
+
+        @if (_vm.BelowMinimum)
+        {
+            <div class="league-alert league-alert-warn">⚠ Need at least 4 players to run a match.</div>
+        }
+        @if (_vm.NoWomen)
+        {
+            <div class="league-alert league-alert-warn">⚠ At least one female player is required per league rules.</div>
+        }
+        @if (!_vm.CanAddPlayer)
+        {
+            <div class="league-alert league-alert-info">Roster is full. Remove a player to add someone new.</div>
+        }
+
+        @if (_vm.Error is not null)
+        {
+            <div class="league-alert league-alert-error">⚠ @_vm.Error</div>
+        }
+        @if (_vm.Notice is not null)
+        {
+            <div class="toast">@_vm.Notice</div>
+        }
+
+        @* ── Player list ───────────────────────────────────── *@
+        @if (roster.Players.Count == 0)
+        {
+            <div class="empty-state"><p>No players yet.</p></div>
+        }
+        else
+        {
+            <div class="roster-list">
+                @foreach (var player in roster.Players)
+                {
+                    <div class="roster-row">
+                        <div class="roster-main">
+                            <span class="roster-name">@player.Name</span>
+                            <span class="league-badge @(player.Gender == Gender.Female ? "badge-female" : "badge-male")">
+                                @(player.Gender == Gender.Female ? "F" : "M")
+                            </span>
+                            <span class="league-badge badge-rank">Rank @player.Rank</span>
+                        </div>
+
+                        <div class="roster-actions">
+                            @if (_vm.PendingRemoveId == player.Id)
+                            {
+                                <span class="roster-confirm">Remove?</span>
+                                <button class="btn-danger-sm" disabled="@_vm.IsBusy" @onclick="ConfirmRemove">Yes</button>
+                                <button class="league-icon-btn" disabled="@_vm.IsBusy" @onclick="_vm.CancelRemove">No</button>
+                            }
+                            else
+                            {
+                                <a class="league-icon-btn" href="@($"/league/players/{player.Id}/edit")" title="Edit">✏</a>
+                                <button class="league-icon-btn league-icon-danger" title="Remove"
+                                        @onclick="() => _vm.AskRemove(player.Id)">✕</button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+
+</div>
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private RosterViewModel _vm = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _vm = new RosterViewModel(Api);
+        await _vm.LoadAsync(_cts.Token);
+    }
+
+    private Task Reload() => _vm.LoadAsync(_cts.Token);
+
+    private Task ConfirmRemove() => _vm.ConfirmRemoveAsync(_cts.Token);
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}
