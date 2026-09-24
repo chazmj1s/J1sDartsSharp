@@ -1,0 +1,150 @@
+@page "/league/players/new"
+@page "/league/players/{Id:int}/edit"
+@using J1sDartSharp.Services
+@using J1sDartSharp.Shared.Constants
+@using J1sDartSharp.Shared.Enums
+@using J1sDartSharp.ViewModels.League
+@implements IDisposable
+@inject ILeagueApiClient Api
+@inject NavigationManager Nav
+
+@* Port of app/views/players/new, edit and _form.html.erb *@
+
+<div class="league-page">
+
+    <div class="page-header">
+        <div class="league-title">
+            <a href="/league/players" class="league-back" title="Back to roster">‹</a>
+            <h2>@(_vm.IsNew ? "Add Player" : "Edit Player")</h2>
+        </div>
+    </div>
+
+    @if (_vm.IsLoading)
+    {
+        <div class="league-loading">Loading player…</div>
+    }
+    else if (_vm.LoadFailed)
+    {
+        <div class="league-alert league-alert-error">
+            <p>⚠ @_vm.Error</p>
+            <a href="/league/players" class="btn btn-secondary league-btn-sm">Back to roster</a>
+        </div>
+    }
+    else
+    {
+        <form class="league-form" @onsubmit="Save">
+
+            @if (_vm.Error is not null)
+            {
+                <div class="league-alert league-alert-error">
+                    <p>⚠ @_vm.Error</p>
+                    @foreach (var message in _vm.OtherErrors)
+                    {
+                        <p>@message</p>
+                    }
+                </div>
+            }
+
+            @* ── Name ─────────────────────────────────────── *@
+            <div class="league-field">
+                <label class="league-label" for="player-name">Name</label>
+                <input id="player-name"
+                       class="league-input @(NameError is null ? "" : "has-error")"
+                       placeholder="Player name"
+                       maxlength="100"
+                       autocomplete="off"
+                       @bind="_vm.Name"
+                       @bind:event="oninput" />
+                @if (NameError is not null)
+                {
+                    <p class="league-field-error">@NameError</p>
+                }
+            </div>
+
+            @* ── Gender ───────────────────────────────────── *@
+            <div class="league-field">
+                <span class="league-label">Gender</span>
+                <div class="league-segmented">
+                    <button type="button"
+                            class="@(_vm.Gender == Gender.Female ? "active" : "")"
+                            @onclick="() => _vm.Gender = Gender.Female">Female</button>
+                    <button type="button"
+                            class="@(_vm.Gender == Gender.Male ? "active" : "")"
+                            @onclick="() => _vm.Gender = Gender.Male">Male</button>
+                </div>
+                @if (GenderError is not null)
+                {
+                    <p class="league-field-error">@GenderError</p>
+                }
+            </div>
+
+            @* ── Rank ─────────────────────────────────────── *@
+            <div class="league-field">
+                <span class="league-label">Rank</span>
+                <div class="league-segmented">
+                    @for (var r = LeagueRules.MinRank; r <= LeagueRules.MaxRank; r++)
+                    {
+                        var rank = r;
+                        <button type="button"
+                                class="@(_vm.Rank == rank ? "active" : "")"
+                                @onclick="() => _vm.Rank = rank">@rank</button>
+                    }
+                </div>
+                <p class="league-hint">Rank 1 = highest priority for odd game slots</p>
+                @if (RankError is not null)
+                {
+                    <p class="league-field-error">@RankError</p>
+                }
+            </div>
+
+            <div class="league-form-actions">
+                <button type="submit" class="btn btn-primary" disabled="@_vm.IsSaving">
+                    @(_vm.IsSaving ? "Saving…" : _vm.IsNew ? "Add Player" : "Save Changes")
+                </button>
+                <a href="/league/players" class="btn btn-secondary">Cancel</a>
+            </div>
+
+        </form>
+    }
+
+</div>
+
+@code {
+    /// <summary>Null on /league/players/new.</summary>
+    [Parameter] public int? Id { get; set; }
+
+    private readonly CancellationTokenSource _cts = new();
+    private PlayerEditViewModel _vm = default!;
+    private int? _loadedId;
+    private bool _loaded;
+
+    private string? NameError => _vm.FieldError(PlayerEditViewModel.NameField);
+    private string? GenderError => _vm.FieldError(PlayerEditViewModel.GenderField);
+    private string? RankError => _vm.FieldError(PlayerEditViewModel.RankField);
+
+    protected override void OnInitialized() => _vm = new PlayerEditViewModel(Api);
+
+    // Parameters (not Initialized): Blazor reuses this component when
+    // navigating between /new and /{id}/edit, so reload whenever Id changes.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loaded && _loadedId == Id)
+            return;
+
+        _loaded = true;
+        _loadedId = Id;
+        await _vm.LoadAsync(Id, _cts.Token);
+    }
+
+    private async Task Save()
+    {
+        if (await _vm.SaveAsync(_cts.Token))
+            Nav.NavigateTo("/league/players");
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

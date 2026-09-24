@@ -25,12 +25,12 @@
     <GenerateMauiIcons>true</GenerateMauiIcons>
 
     <!--
-      The Shared, Core and Api projects live in subfolders of this project's folder.
+      The Shared, Core, Api and Tests projects live in subfolders of this project's folder.
       Without this, the SDK's default **/*.cs (and *.razor) globs would compile
       their source into the app — including EF Core code on iOS.
       Harmless if the folders don't exist.
     -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);J1sDartSharp.Shared\**;J1sDartSharp.Core\**;J1sDartSharp.Api\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);J1sDartSharp.Shared\**;J1sDartSharp.Core\**;J1sDartSharp.Api\**;J1sDartSharp.Tests\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows' and '$(RuntimeIdentifierOverride)' != ''">

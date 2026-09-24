@@ -1,0 +1,219 @@
+@page "/league/matches/{Id:int}"
+@using J1sDartSharp.ViewModels.League
+@implements IDisposable
+@inject ILeagueApiClient Api
+
+@*
+    Port of app/views/matches/show.html.erb — the match-night screen.
+    Roster management only: no score entry (scores will come from DartConnect).
+    Enum-dependent display logic lives in MatchNightViewModel, so this page
+    needs no J1sDartSharp.Shared.Enums using (and never collides with the
+    practice GameType imported by _Imports.razor).
+*@
+
+<div class="league-page">
+
+    @* ── Header ─────────────────────────────────────────── *@
+    <div class="page-header">
+        <div class="league-title">
+            <a href="/league/matches" class="league-back" title="Back to matches">‹</a>
+            <h2>@(_vm.Match?.Opponent ?? "Match")</h2>
+        </div>
+        @if (_vm.Match is { } header)
+        {
+            <div class="mn-header-actions">
+                <span class="league-status @MatchNightViewModel.StatusClass(header.Status)">@header.Status</span>
+                <button class="league-icon-btn" title="Refresh" disabled="@(_vm.IsBusy || _vm.IsLoading)" @onclick="Refresh">↻</button>
+                <a href="@($"/league/matches/{Id}/edit")" class="league-icon-btn" title="Edit match">✏</a>
+            </div>
+        }
+    </div>
+
+    @if (_vm.Match is null)
+    {
+        @if (_vm.IsLoading)
+        {
+            <div class="league-loading">Loading match…</div>
+        }
+        else if (_vm.Error is not null)
+        {
+            <div class="league-alert league-alert-error">
+                <p>⚠ @_vm.Error</p>
+                <button class="btn btn-secondary league-btn-sm" @onclick="Refresh">Retry</button>
+            </div>
+        }
+    }
+    else
+    {
+        var match = _vm.Match;
+
+        <p class="match-meta mn-meta">@match.MatchDate.ToString("dddd, MMM d, yyyy") · @match.Location</p>
+
+        @if (_vm.Error is not null && _vm.ErrorGameId is null)
+        {
+            <div class="league-alert league-alert-error">⚠ @_vm.Error</div>
+        }
+        @if (_vm.Notice is not null)
+        {
+            <div class="toast">@_vm.Notice</div>
+        }
+
+        @* ── Roster & Attendance ───────────────────────────── *@
+        <details class="mn-section" open>
+            <summary class="mn-section-summary">
+                <span class="section-title">Roster &amp; Attendance</span>
+                <span class="mn-summary-hint">tap to toggle</span>
+            </summary>
+
+            <div class="mn-attendance">
+                @foreach (var row in _vm.Attendance)
+                {
+                    <div class="mn-player @(row.IsAbsent ? "is-absent" : "")">
+                        <div class="mn-player-info">
+                            <span class="mn-player-name">@row.Player.Name</span>
+                            <span class="mn-player-load">
+                                @(row.IsAbsent ? "absent" : $"{row.Games} game{(row.Games == 1 ? "" : "s")}")
+                            </span>
+                        </div>
+                        @if (row.IsAbsent)
+                        {
+                            <button class="league-icon-btn" disabled="@_vm.IsBusy" @onclick="() => MarkPresent(row)">Mark In</button>
+                        }
+                        else
+                        {
+                            <button class="league-icon-btn league-icon-danger" disabled="@_vm.IsBusy" @onclick="() => MarkAbsent(row)">Absent</button>
+                        }
+                    </div>
+                }
+            </div>
+        </details>
+
+        @* ── Action buttons ────────────────────────────────── *@
+        @if (_vm.CanChangeLineup)
+        {
+            @if (_vm.ConfirmingFinalize)
+            {
+                <div class="league-alert league-alert-warn mn-confirm">
+                    <p>Lock in this lineup? Pairings can't be changed afterward.</p>
+                    <div class="league-form-actions">
+                        <button class="btn btn-primary" disabled="@_vm.IsBusy" @onclick="Finalize">🔒 Yes, finalize</button>
+                        <button class="btn btn-secondary" disabled="@_vm.IsBusy" @onclick="_vm.CancelFinalize">Cancel</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="league-form-actions">
+                    <button class="btn btn-primary" disabled="@_vm.IsBusy" @onclick="Reassign">🎯 Re-Assign Pairings</button>
+                    <button class="btn btn-secondary" disabled="@_vm.IsBusy" @onclick="_vm.AskFinalize">🔒 Finalize</button>
+                </div>
+            }
+        }
+        else if (_vm.IsFinalized)
+        {
+            <div class="league-alert league-alert-info">🔒 Lineup locked.</div>
+        }
+
+        @* ── Games ─────────────────────────────────────────── *@
+        <section>
+            <h3 class="section-title">Games (@match.Games.Count total · @_vm.TotalSlots player slots)</h3>
+
+            @foreach (var group in _vm.GameGroups)
+            {
+                <h4 class="mn-group-title">@MatchNightViewModel.FormatIcon(group.Format) @group.DisplayName</h4>
+
+                <div class="mn-games">
+                    @foreach (var game in group.Games)
+                    {
+                        var editing = _vm.EditingGameId == game.Id;
+
+                        <div class="mn-game @(editing ? "is-open" : "")">
+                            <div class="mn-game-top">
+                                <div class="mn-game-info">
+                                    <span class="mn-game-seq">Game @game.Sequence</span>
+                                    @if (game.Players.Count > 0)
+                                    {
+                                        <span class="mn-game-players">@MatchNightViewModel.PlayerNames(game)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="mn-game-unassigned">⚠ Unassigned</span>
+                                    }
+                                </div>
+                            </div>
+
+                            @if (!editing && _vm.CanChangeLineup)
+                            {
+                                <div class="mn-game-links">
+                                    <button class="mn-link" disabled="@_vm.IsBusy" @onclick="() => _vm.StartEdit(game)">Edit players</button>
+                                </div>
+                            }
+
+                            @if (_vm.Error is not null && _vm.ErrorGameId == game.Id)
+                            {
+                                <p class="league-field-error mn-panel-error">⚠ @_vm.Error</p>
+                            }
+
+                            @* ── Inline: edit players ───────────── *@
+                            @if (editing)
+                            {
+                                <div class="mn-panel">
+                                    <p class="league-hint">
+                                        Select exactly @game.PlayerCount @(game.PlayerCount == 1 ? "player" : "players")
+                                        <span class="mn-count @(_vm.SelectedCount == game.PlayerCount ? "ok" : "")">(@_vm.SelectedCount selected)</span>
+                                    </p>
+                                    <div class="mn-checks">
+                                        @foreach (var player in _vm.AvailablePlayers)
+                                        {
+                                            <label class="mn-check">
+                                                <input type="checkbox"
+                                                       checked="@_vm.IsSelected(player.Id)"
+                                                       @onchange="() => _vm.TogglePlayer(player.Id)" />
+                                                <span>@player.Name</span>
+                                                <span class="mn-check-gender">(@MatchNightViewModel.GenderLabel(player.Gender))</span>
+                                            </label>
+                                        }
+                                    </div>
+                                    <div class="league-form-actions">
+                                        <button class="btn btn-primary" disabled="@_vm.IsBusy" @onclick="() => SavePlayers(game)">Save</button>
+                                        <button class="btn btn-secondary" disabled="@_vm.IsBusy" @onclick="_vm.CloseAllPanels">Cancel</button>
+                                    </div>
+                                </div>
+                            }
+
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+    }
+
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private readonly CancellationTokenSource _cts = new();
+    private MatchNightViewModel _vm = default!;
+
+    protected override void OnInitialized() => _vm = new MatchNightViewModel(Api);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_vm.MatchId != Id || _vm.Match is null)
+            await _vm.LoadAsync(Id, _cts.Token);
+    }
+
+    private Task Refresh() => _vm.RefreshAsync(_cts.Token);
+    private Task Reassign() => _vm.ReassignAsync(_cts.Token);
+    private Task Finalize() => _vm.FinalizeAsync(_cts.Token);
+    private Task MarkAbsent(AttendanceRow row) => _vm.MarkAbsentAsync(row.Player, _cts.Token);
+    private Task MarkPresent(AttendanceRow row) => _vm.MarkPresentAsync(row, _cts.Token);
+    private Task SavePlayers(J1sDartSharp.Shared.Contracts.GameDto game) => _vm.SaveGamePlayersAsync(game, _cts.Token);
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

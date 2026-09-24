@@ -1,0 +1,201 @@
+# Visual Studio: open this file and click "Send request" above each block.
+# Start the Api first (http profile, port 5180).
+
+@api = http://localhost:5180
+
+### Roster (active players + stats)
+GET {{api}}/api/players
+
+### Add the seed roster — run each once
+POST {{api}}/api/players
+Content-Type: application/json
+
+{ "name": "Linda", "gender": "Female", "rank": 3 }
+
+###
+POST {{api}}/api/players
+Content-Type: application/json
+
+{ "name": "Anita", "gender": "Female", "rank": 3 }
+
+###
+POST {{api}}/api/players
+Content-Type: application/json
+
+{ "name": "Mike", "gender": "Male", "rank": 1 }
+
+###
+POST {{api}}/api/players
+Content-Type: application/json
+
+{ "name": "Dave", "gender": "Male", "rank": 1 }
+
+###
+POST {{api}}/api/players
+Content-Type: application/json
+
+{ "name": "Charlie", "gender": "Male", "rank": 2 }
+
+###
+POST {{api}}/api/players
+Content-Type: application/json
+
+{ "name": "Ronnie", "gender": "Male", "rank": 2 }
+
+### Single player
+GET {{api}}/api/players/1
+
+### Update (rank change)
+PUT {{api}}/api/players/1
+Content-Type: application/json
+
+{ "name": "Linda", "gender": "Female", "rank": 2 }
+
+### EXPECT 400 — duplicate name, different case
+POST {{api}}/api/players
+Content-Type: application/json
+
+{ "name": "linda", "gender": "Female", "rank": 3 }
+
+### EXPECT 400 — rank out of range, missing gender
+POST {{api}}/api/players
+Content-Type: application/json
+
+{ "name": "Nobody", "rank": 4 }
+
+### EXPECT 404
+GET {{api}}/api/players/999
+
+### Soft delete (player disappears from roster, row stays)
+# DELETE {{api}}/api/players/6
+
+# ═════════════════════════════════════════════════════════════════════════
+# MATCHES — run top to bottom. Assumes the 6 seed players exist.
+# Use the "id" from the POST response if it isn't 1.
+# ═════════════════════════════════════════════════════════════════════════
+
+@matchId = 1
+
+### Create a match (11 games, all Unassigned)
+POST {{api}}/api/matches
+Content-Type: application/json
+
+{ "opponent": "Elaine, Show Us Those Trips!", "matchDate": "2026-04-07", "location": "Rags" }
+
+### List (expect: 0 completed, 0 assigned, 11 pending)
+GET {{api}}/api/matches
+
+### Assign pairings (expect: 11 games filled; load Dave 4, Mike 4, others 3)
+POST {{api}}/api/matches/{{matchId}}/reassign
+
+### Detail
+GET {{api}}/api/matches/{{matchId}}
+
+### Edit
+PUT {{api}}/api/matches/{{matchId}}
+Content-Type: application/json
+
+{ "opponent": "Elaine, Show Us Those Trips!", "matchDate": "2026-04-07", "location": "Top Spin" }
+
+### Lock the lineup
+POST {{api}}/api/matches/{{matchId}}/finalize
+
+### EXPECT 409 — finalized matches can't be reassigned
+POST {{api}}/api/matches/{{matchId}}/reassign
+
+### EXPECT 400 — missing date and opponent
+POST {{api}}/api/matches
+Content-Type: application/json
+
+{ "location": "Rags" }
+
+### EXPECT 404
+GET {{api}}/api/matches/999
+
+### Delete (cascades games/participants/absences) — uncomment to run
+# DELETE {{api}}/api/matches/{{matchId}}
+
+# ═════════════════════════════════════════════════════════════════════════
+# GAMES & ABSENCES — uses a SECOND match, because match 1 is finalized.
+# Assumes the new match gets id 2 and games 12–22 (sequence 1–11).
+# If not, adjust the variables from the POST response.
+# ═════════════════════════════════════════════════════════════════════════
+
+@m2 = 2
+@sc1 = 12
+@sc2 = 13
+@s501a = 14
+@s501b = 15
+@dbl1 = 16
+
+### Create match 2 and assign pairings
+POST {{api}}/api/matches
+Content-Type: application/json
+
+{ "opponent": "It's Irrelevant", "matchDate": "2026-04-14", "location": "Top Spin" }
+
+###
+POST {{api}}/api/matches/{{m2}}/reassign
+
+### ── Manual game edits: set all four singles games explicitly ──
+# Singles Cricket 1 → Linda (1)
+PUT {{api}}/api/matches/{{m2}}/games/{{sc1}}
+Content-Type: application/json
+
+{ "playerIds": [1] }
+
+### Singles Cricket 2 → Dave (4)
+PUT {{api}}/api/matches/{{m2}}/games/{{sc2}}
+Content-Type: application/json
+
+{ "playerIds": [4] }
+
+### Singles 501 1 → Mike (3)
+PUT {{api}}/api/matches/{{m2}}/games/{{s501a}}
+Content-Type: application/json
+
+{ "playerIds": [3] }
+
+### Singles 501 2 → Charlie (5)
+PUT {{api}}/api/matches/{{m2}}/games/{{s501b}}
+Content-Type: application/json
+
+{ "playerIds": [5] }
+
+### EXPECT 422 — replacing Linda with Ronnie leaves no woman in any singles game
+PUT {{api}}/api/matches/{{m2}}/games/{{sc1}}
+Content-Type: application/json
+
+{ "playerIds": [6] }
+
+### EXPECT 422 — doubles game needs 2 players
+PUT {{api}}/api/matches/{{m2}}/games/{{dbl1}}
+Content-Type: application/json
+
+{ "playerIds": [1] }
+
+### ── Scores ──
+# Complete Singles Cricket 1 (Linda)
+POST {{api}}/api/matches/{{m2}}/games/{{sc1}}/complete
+Content-Type: application/json
+
+{ "homeScore": 1, "awayScore": 0 }
+
+### Reassign — game 12 must stay Completed with Linda; the other 10 get rebuilt
+POST {{api}}/api/matches/{{m2}}/reassign
+
+### ── Absences ──
+# Ronnie (6) absent → pairings rebuild with 5 players
+POST {{api}}/api/matches/{{m2}}/absences
+Content-Type: application/json
+
+{ "playerId": 6, "reason": "Work" }
+
+### EXPECT 422 — already absent
+POST {{api}}/api/matches/{{m2}}/absences
+Content-Type: application/json
+
+{ "playerId": 6 }
+
+### Ronnie present again — use the absence "id" from the response above (1 if first)
+DELETE {{api}}/api/matches/{{m2}}/absences/1

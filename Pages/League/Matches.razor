@@ -1,0 +1,84 @@
+@page "/league/matches"
+@using J1sDartSharp.Shared.Enums
+@using J1sDartSharp.ViewModels.League
+@implements IDisposable
+@inject ILeagueApiClient Api
+
+@* Port of app/views/matches/index.html.erb *@
+
+<div class="league-page">
+
+    <div class="page-header">
+        <h2>Matches</h2>
+        <a href="/league/matches/new" class="btn btn-primary league-btn-sm">＋ New</a>
+    </div>
+
+    @if (_vm.Matches is null)
+    {
+        @if (_vm.IsLoading)
+        {
+            <div class="league-loading">Loading matches…</div>
+        }
+        else if (_vm.Error is not null)
+        {
+            <div class="league-alert league-alert-error">
+                <p>⚠ @_vm.Error</p>
+                <button class="btn btn-secondary league-btn-sm" @onclick="Reload">Retry</button>
+            </div>
+        }
+    }
+    else if (_vm.Matches.Count == 0)
+    {
+        <div class="empty-state">
+            <p>No matches yet.</p>
+            <a href="/league/matches/new" class="btn btn-primary league-empty-btn">Create your first match</a>
+        </div>
+    }
+    else
+    {
+        <div class="match-list">
+            @foreach (var match in _vm.Matches)
+            {
+                <a class="match-card" href="@($"/league/matches/{match.Id}")">
+                    <div class="match-card-top">
+                        <div class="match-card-title">
+                            <span class="match-opponent">@match.Opponent</span>
+                            <span class="match-meta">@match.MatchDate.ToString("ddd, MMM d") · @match.Location</span>
+                        </div>
+                        <span class="league-status @StatusClass(match.Status)">@match.Status</span>
+                    </div>
+                    <div class="match-progress">
+                        @match.CompletedGames completed · @match.AssignedGames assigned · @match.PendingGames pending
+                    </div>
+                </a>
+            }
+        </div>
+    }
+
+</div>
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private MatchesViewModel _vm = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _vm = new MatchesViewModel(Api);
+        await _vm.LoadAsync(_cts.Token);
+    }
+
+    private Task Reload() => _vm.LoadAsync(_cts.Token);
+
+    private static string StatusClass(MatchStatus status) => status switch
+    {
+        MatchStatus.Finalized => "status-finalized",
+        MatchStatus.Completed => "status-completed",
+        _ => "status-draft"
+    };
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

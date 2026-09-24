@@ -1,0 +1,186 @@
+@page "/league/matches/new"
+@page "/league/matches/{Id:int}/edit"
+@using J1sDartSharp.ViewModels.League
+@implements IDisposable
+@inject ILeagueApiClient Api
+@inject NavigationManager Nav
+
+@* Port of app/views/matches/new, edit and _form.html.erb *@
+
+<div class="league-page">
+
+    <div class="page-header">
+        <div class="league-title">
+            <a href="@BackHref" class="league-back" title="Back">‹</a>
+            <h2>@(_vm.IsNew ? "New Match" : "Edit Match")</h2>
+        </div>
+    </div>
+
+    @if (_vm.IsLoading)
+    {
+        <div class="league-loading">Loading match…</div>
+    }
+    else if (_vm.LoadFailed)
+    {
+        <div class="league-alert league-alert-error">
+            <p>⚠ @_vm.Error</p>
+            <a href="/league/matches" class="btn btn-secondary league-btn-sm">Back to matches</a>
+        </div>
+    }
+    else
+    {
+        <form class="league-form" @onsubmit="Save">
+
+            @if (_vm.Error is not null)
+            {
+                <div class="league-alert league-alert-error">
+                    <p>⚠ @_vm.Error</p>
+                    @foreach (var message in _vm.OtherErrors)
+                    {
+                        <p>@message</p>
+                    }
+                </div>
+            }
+
+            @* ── Opponent ─────────────────────────────────── *@
+            <div class="league-field">
+                <label class="league-label" for="match-opponent">Opponent</label>
+                <input id="match-opponent"
+                       class="league-input @(OpponentError is null ? "" : "has-error")"
+                       placeholder="e.g. The Red Lion"
+                       maxlength="100"
+                       autocomplete="off"
+                       @bind="_vm.Opponent"
+                       @bind:event="oninput" />
+                @if (OpponentError is not null)
+                {
+                    <p class="league-field-error">@OpponentError</p>
+                }
+            </div>
+
+            @* ── Date ─────────────────────────────────────── *@
+            <div class="league-field">
+                <label class="league-label" for="match-date">Date</label>
+                <input id="match-date"
+                       type="date"
+                       class="league-input @(DateError is null ? "" : "has-error")"
+                       @bind="_vm.MatchDate" />
+                @if (DateError is not null)
+                {
+                    <p class="league-field-error">@DateError</p>
+                }
+            </div>
+
+            @* ── Location ─────────────────────────────────── *@
+            <div class="league-field">
+                <label class="league-label" for="match-location">Location</label>
+                <input id="match-location"
+                       class="league-input @(LocationError is null ? "" : "has-error")"
+                       placeholder="Venue, or home / away"
+                       maxlength="100"
+                       autocomplete="off"
+                       @bind="_vm.Location"
+                       @bind:event="oninput" />
+                <div class="league-chips">
+                    <button type="button"
+                            class="league-chip @(IsLocation("home") ? "active" : "")"
+                            @onclick='() => _vm.Location = "home"'>Home</button>
+                    <button type="button"
+                            class="league-chip @(IsLocation("away") ? "active" : "")"
+                            @onclick='() => _vm.Location = "away"'>Away</button>
+                </div>
+                @if (LocationError is not null)
+                {
+                    <p class="league-field-error">@LocationError</p>
+                }
+            </div>
+
+            @if (_vm.IsNew)
+            {
+                <p class="league-hint">Creates the standard 11-game slate. Assign pairings from the match screen.</p>
+            }
+
+            <div class="league-form-actions">
+                <button type="submit" class="btn btn-primary" disabled="@_vm.IsBusy">
+                    @(_vm.IsSaving ? "Saving…" : _vm.IsNew ? "Create Match" : "Save Changes")
+                </button>
+                <a href="@BackHref" class="btn btn-secondary">Cancel</a>
+            </div>
+
+        </form>
+
+        @* ── Delete (edit only) ───────────────────────────── *@
+        @if (!_vm.IsNew)
+        {
+            <div class="league-danger-zone">
+                @if (_vm.ConfirmingDelete)
+                {
+                    <p class="league-danger-text">Delete this match? This cannot be undone.</p>
+                    <div class="league-form-actions">
+                        <button class="btn btn-bust" disabled="@_vm.IsBusy" @onclick="Delete">
+                            @(_vm.IsDeleting ? "Deleting…" : "Yes, delete")
+                        </button>
+                        <button class="btn btn-secondary" disabled="@_vm.IsBusy" @onclick="_vm.CancelDelete">Keep it</button>
+                    </div>
+                }
+                else
+                {
+                    <button class="btn league-btn-delete" disabled="@_vm.IsBusy" @onclick="_vm.AskDelete">Delete Match</button>
+                }
+            </div>
+        }
+    }
+
+</div>
+
+@code {
+    /// <summary>Null on /league/matches/new.</summary>
+    [Parameter] public int? Id { get; set; }
+
+    private readonly CancellationTokenSource _cts = new();
+    private MatchEditViewModel _vm = default!;
+    private int? _loadedId;
+    private bool _loaded;
+
+    private string? OpponentError => _vm.FieldError(MatchEditViewModel.OpponentField);
+    private string? DateError => _vm.FieldError(MatchEditViewModel.MatchDateField);
+    private string? LocationError => _vm.FieldError(MatchEditViewModel.LocationField);
+
+    /// <summary>Rails: new → back to the list; edit → back to the match.</summary>
+    private string BackHref => Id is int id ? $"/league/matches/{id}" : "/league/matches";
+
+    private bool IsLocation(string value) =>
+        string.Equals(_vm.Location?.Trim(), value, StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnInitialized() => _vm = new MatchEditViewModel(Api);
+
+    // Parameters (not Initialized): Blazor reuses this component when
+    // navigating between /new and /{id}/edit, so reload whenever Id changes.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loaded && _loadedId == Id)
+            return;
+
+        _loaded = true;
+        _loadedId = Id;
+        await _vm.LoadAsync(Id, _cts.Token);
+    }
+
+    private async Task Save()
+    {
+        if (await _vm.SaveAsync(_cts.Token) is int savedId)
+            Nav.NavigateTo($"/league/matches/{savedId}");
+    }
+
+    private async Task Delete()
+    {
+        if (await _vm.DeleteAsync(_cts.Token))
+            Nav.NavigateTo("/league/matches");
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

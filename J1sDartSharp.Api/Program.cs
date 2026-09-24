@@ -1,4 +1,6 @@
 using J1sDartSharp.Api.Data;
+using J1sDartSharp.Api.Services;
+using J1sDartSharp.Core.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -8,7 +10,18 @@ builder.Services.AddDbContext<LeagueDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("League")
         ?? throw new InvalidOperationException("Connection string 'League' is not configured.")));
 
-// Phase 2 will add: controllers, PairingService, JSON options, CORS/auth as needed.
+// ── Domain services ─────────────────────────────────────────────────────
+// Pure and stateless → one shared instance.
+builder.Services.AddSingleton<PairingService>();
+
+// Uses the DbContext → one per request.
+builder.Services.AddScoped<LineupService>();
+
+// ── Web ─────────────────────────────────────────────────────────────────
+// Enum/DateOnly JSON handling comes from attributes on the Shared types,
+// so no JsonOptions configuration is needed here.
+builder.Services.AddControllers();
+builder.Services.AddProblemDetails();
 
 var app = builder.Build();
 
@@ -20,6 +33,12 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
 }
 
+// Unhandled exceptions → RFC 7807 ProblemDetails (outside Development,
+// where the developer exception page takes over).
+app.UseExceptionHandler();
+app.UseStatusCodePages();
+
 app.MapGet("/health", () => Results.Ok(new { status = "ok", utc = DateTime.UtcNow }));
+app.MapControllers();
 
 app.Run();
