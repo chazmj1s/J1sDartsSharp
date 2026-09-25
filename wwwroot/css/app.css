@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════════
-   DARTS PRACTICE — App Styles
+   DART SHARP — App Styles
    Aesthetic: Industrial pub board — dark felt, brass, chalk
    ══════════════════════════════════════════════════════ */
 
@@ -88,6 +88,34 @@ body {
 .nav-link:hover { color: var(--chalk); background: var(--felt-light); }
 .nav-link.active { color: var(--brass); background: var(--felt-light); border-bottom: 2px solid var(--brass); }
 
+/* ── Section nav (Manage | Practice) ───────────────── */
+.section-nav {
+  margin-left: auto;
+  display: flex;
+  border: 1px solid var(--brass-dim);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.section-link {
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 2px;
+  color: var(--chalk-dim);
+  text-decoration: none;
+  padding: 4px 14px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.section-link + .section-link { border-left: 1px solid var(--brass-dim); }
+.section-link:hover { color: var(--chalk); background: var(--felt-light); }
+.section-link.active { color: var(--felt); background: var(--brass); }
+
+@media (max-width: 420px) {
+  .app-title { font-size: 22px; letter-spacing: 2px; }
+  .section-link { font-size: 16px; padding: 4px 10px; }
+}
+
 /* ── Main Content ──────────────────────────────────── */
 .main-content { flex: 1; padding: 24px 20px; max-width: 640px; margin: 0 auto; width: 100%; }
 
@@ -172,7 +200,7 @@ body {
 .btn-primary { background: var(--brass); color: var(--felt); }
 .btn-primary:hover { opacity: 0.9; }
 .btn-secondary { background: var(--felt-light); color: var(--chalk); border: 1px solid var(--brass-dim); }
-.btn-ochre { background: var(--green); color: #fff; width: 100%; padding: 14px; font-size: 16px; }
+.btn-oche { background: var(--green); color: #fff; width: 100%; padding: 14px; font-size: 16px; }
 .btn-abandon { background: transparent; color: var(--chalk-dim); border: 1px solid #444; font-size: 13px; margin-top: 8px; width: 100%; }
 .btn-miss { background: var(--felt-light); color: var(--chalk); border: 1px solid #555; }
 .btn-bust { background: var(--bust); color: #fff; }
@@ -250,7 +278,7 @@ body {
 .btn-mark:hover:not(:disabled) { background: var(--brass); color: var(--felt); }
 .btn-mark:disabled { opacity: 0.3; cursor: not-allowed; }
 
-.ochre-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.oche-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 
 .toast {
   background: var(--green);
@@ -331,9 +359,9 @@ body {
 }
 .btn-quick:hover { color: var(--chalk); border-color: var(--brass); }
 
-/* ── Ochre Log ─────────────────────────────────────── */
-.ochre-log { margin-top: 20px; }
-.ochre-log h4 { font-family: var(--font-mono); font-size: 12px; color: var(--chalk-dim); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; }
+/* ── Oche Log ──────────────────────────────────────── */
+.oche-log { margin-top: 20px; }
+.oche-log h4 { font-family: var(--font-mono); font-size: 12px; color: var(--chalk-dim); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; }
 
 .log-rows { display: flex; flex-direction: column; gap: 6px; }
 

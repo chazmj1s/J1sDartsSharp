@@ -64,8 +64,8 @@ public class SessionHistoryService
         return new CricketStats
         {
             SessionsPlayed = completed.Count,
-            AvgOchres      = completed.Average(s => s.OchreCount),
-            BestOchres     = completed.Min(s => s.OchreCount),
+            AvgOches       = completed.Average(s => s.OcheCount),
+            BestOches      = completed.Min(s => s.OcheCount),
             AvgTotalMarks  = completed.Average(s => s.TotalMarks),
             BestTotalMarks = completed.Min(s => s.TotalMarks)
         };
@@ -78,7 +78,8 @@ public class SessionHistoryService
                              .ToList();
         if (!sessions.Any()) return new X01Stats();
 
-        var withDI = sessions.Where(s => s.DoubleInAchieved).ToList();
+        // Double-in stats only mean something for double-in legs.
+        var withDI = sessions.Where(s => s.InMode == InMode.DoubleIn && s.DoubleInAchieved).ToList();
         var withDO = sessions.Where(s => s.DoubleOutAchieved && s.TimeToDoubleOut.HasValue).ToList();
 
         return new X01Stats
@@ -89,8 +90,8 @@ public class SessionHistoryService
             AvgTimeToDoubleIn   = withDI.Any(s => s.TimeToDoubleIn.HasValue)
                 ? TimeSpan.FromSeconds(withDI.Where(s => s.TimeToDoubleIn.HasValue)
                                              .Average(s => s.TimeToDoubleIn!.Value.TotalSeconds)) : null,
-            AvgScorePerOchre    = sessions.Average(s => s.AveragePerOchre),
-            BestScorePerOchre   = sessions.Max(s => s.AveragePerOchre),
+            AvgScorePerOche     = sessions.Average(s => s.AveragePerOche),
+            BestScorePerOche    = sessions.Max(s => s.AveragePerOche),
             AvgTimeToDoubleOut  = withDO.Any()
                 ? TimeSpan.FromSeconds(withDO.Average(s => s.TimeToDoubleOut!.Value.TotalSeconds)) : null,
             BestTimeToDoubleOut = withDO.Any()
@@ -109,40 +110,55 @@ public class SessionHistoryService
 
     private static SessionBase RowToSession(Data.SessionRow r)
     {
+        // Keep the row's id so Delete works on sessions loaded at startup.
+        var id = Guid.TryParse(r.Id, out var parsed) ? parsed : Guid.NewGuid();
+
         if (r.Game == "Cricket")
         {
-            return new CricketSession
+            var variant = Enum.TryParse<CricketVariant>(r.CricketVariant, out var v) ? v : CricketVariant.American;
+            return new CricketSession(variant)
             {
+                Id           = id,
                 StartedAt    = r.StartedAt,
                 CompletedAt  = r.CompletedAt,
                 IsComplete   = r.IsComplete,
-                OchreCount   = r.CricketOchres ?? 0
+                OcheCount    = r.CricketOches ?? 0,
+                MarksScored  = r.CricketTotalMarks ?? 0,
+                DartsThrown  = r.CricketDarts ?? 0
                 // Marks map not rehydrated from flat row — extend DartLogRow query if needed
             };
         }
-        else
+
+        var startScore = r.X01StartScore ?? (r.Game == "301" ? 301 : 501);
+
+        // Rows saved before in/out options existed: infer "in" from the double-in
+        // count; they were all double out.
+        var inMode = r.X01InMode switch
         {
-            var game = r.Game == "301" ? GameType.ThreeOhOne : GameType.FiveOhOne;
-            var s = new X01Session(game)
-            {
-                StartedAt           = r.StartedAt,
-                CompletedAt         = r.CompletedAt,
-                IsComplete          = r.IsComplete,
-                DartsToDoubleIn     = r.X01DartsToDoubleIn ?? 0,
-                DoubleInAchieved    = r.X01DoubleInAt.HasValue,
-                DoubleInAt          = r.X01DoubleInAt,
-                DoubleOutAchieved   = r.X01DoubleOutAchieved ?? false,
-                DoubleOutAt         = r.X01DoubleOutAt,
-                BustCount           = r.X01BustCount ?? 0
-            };
-            // Rehydrate summary ochre log entry for average calculation
-            if (r.X01ScoringOchres > 0 && r.X01AvgPerOchre > 0)
-            {
-                var syntheticScore = (int)Math.Round(r.X01AvgPerOchre!.Value);
-                for (int i = 1; i <= r.X01ScoringOchres; i++)
-                    s.OchreLog.Add(new X01OchreEntry(i, syntheticScore, 0));
-            }
-            return s;
-        }
+            nameof(InMode.SingleIn) => InMode.SingleIn,
+            nameof(InMode.DoubleIn) => InMode.DoubleIn,
+            _ => (r.X01DartsToDoubleIn ?? 0) > 0 ? InMode.DoubleIn : InMode.SingleIn
+        };
+        var outMode = r.X01OutMode == nameof(OutMode.SingleOut) ? OutMode.SingleOut : OutMode.DoubleOut;
+        var checkedOut = r.X01DoubleOutAchieved ?? false;
+
+        return new X01Session(startScore, inMode, outMode)
+        {
+            Id                = id,
+            StartedAt         = r.StartedAt,
+            CompletedAt       = r.CompletedAt,
+            IsComplete        = r.IsComplete,
+            DartsToDoubleIn   = r.X01DartsToDoubleIn ?? 0,
+            DoubleInAchieved  = inMode == InMode.SingleIn || r.X01DoubleInAt.HasValue,
+            DoubleInAt        = r.X01DoubleInAt,
+            RemainingScore    = checkedOut ? 0 : startScore,
+            DartsThrown       = r.X01TotalDarts ?? 0,
+            StoredAverage     = r.X01AvgPerOche,
+            StoredOcheTrips   = r.X01OcheTrips,
+            DoubleOutAchieved = checkedOut,
+            DoubleOutAt       = r.X01DoubleOutAt,
+            FinishingDart     = r.X01FinishingDart ?? 0,
+            BustCount         = r.X01BustCount ?? 0
+        };
     }
 }

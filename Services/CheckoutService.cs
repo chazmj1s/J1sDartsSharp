@@ -1,189 +1,149 @@
+using System.Collections.Concurrent;
+
 namespace J1sDartSharp.Services;
 
 /// <summary>
-/// Standard darts checkout suggestions.
-/// Covers all finishable scores from 2–170 (excluding 169, 168, 166, 165, 163, 162, 159).
-/// Each entry is an array of up to 3 dart strings shown to the player.
+/// X01 finishing routes, generated from the board rather than a hand-written
+/// table, so every route is legal for the out rule and the darts left in the turn.
+///
+/// Labels: "20" single, "D20" double, "T20" treble, "25" outer bull, "DB" bull (50).
+///
+/// Ranking: fewer darts first, then routes that are easier to hit
+/// (singles and T20/T19 set-ups, favourite doubles D20/D16 to finish), then
+/// the higher opening dart. Set-up darts are listed highest first.
 /// </summary>
 public static class CheckoutService
 {
-    /// <summary>Returns checkout suggestions for a given remaining score, or null if not finishable.</summary>
-    public static CheckoutSuggestion? GetCheckout(int remaining)
+    /// <summary>Routes shown per side on the 01 screen.</summary>
+    public const int MaxRoutes = 3;
+
+    private sealed record Dart(string Label, int Score, int Multiplier, int SetupCost);
+
+    private static readonly Dart[] Board = BuildBoard();
+
+    private static readonly ConcurrentDictionary<(int Remaining, int Darts, bool DoubleOut), string[][]> Cache = new();
+
+    /// <summary>
+    /// Best finishing routes for <paramref name="remaining"/> using at most
+    /// <paramref name="dartsLeft"/> darts. Empty when there is no finish.
+    /// </summary>
+    public static IReadOnlyList<string[]> GetRoutes(
+        int remaining, int dartsLeft = 3, bool doubleOut = true, int max = MaxRoutes)
     {
-        if (remaining < 2 || remaining > 170) return null;
-        if (_table.TryGetValue(remaining, out var options))
-            return new CheckoutSuggestion(remaining, options.Take(3).ToArray());
-        return null;
+        dartsLeft = Math.Min(dartsLeft, 3);
+        if (remaining <= 0 || dartsLeft <= 0 || max <= 0 || remaining > dartsLeft * 60)
+            return [];
+
+        var all = Cache.GetOrAdd((remaining, dartsLeft, doubleOut), key => Build(key.Remaining, key.Darts, key.DoubleOut));
+        return all.Length <= max ? all : all[..max];
     }
 
-    /// <summary>True if the score is a valid finish (reachable double-out in ≤3 darts).</summary>
-    public static bool IsFinishable(int remaining) => _table.ContainsKey(remaining);
+    public static bool IsFinishable(int remaining, int dartsLeft = 3, bool doubleOut = true) =>
+        GetRoutes(remaining, dartsLeft, doubleOut, 1).Count > 0;
 
-    // ── Checkout table ───────────────────────────────────────────────────────
-    // Format per dart: "T20" = Triple 20, "D20" = Double 20, "25" = Bull single, "D25" = Bull double
-    // Multiple routes listed where common alternatives exist.
+    // ── Generation ───────────────────────────────────────────────────────────
 
-    private static readonly Dictionary<int, string[][]> _table = new()
+    private static string[][] Build(int remaining, int dartsLeft, bool doubleOut)
     {
-        // ── 2-dart finishes (score ≤ 40, even) ──────────────────────────────
-        [2]  = [["D1"]],
-        [4]  = [["D2"]],
-        [6]  = [["D3"]],
-        [8]  = [["D4"]],
-        [10] = [["D5"]],
-        [12] = [["D6"]],
-        [14] = [["D7"]],
-        [16] = [["D8"]],
-        [18] = [["D9"]],
-        [20] = [["D10"]],
-        [22] = [["D11"]],
-        [24] = [["D12"]],
-        [26] = [["D13"]],
-        [28] = [["D14"]],
-        [30] = [["D15"]],
-        [32] = [["D16"]],
-        [34] = [["D17"]],
-        [36] = [["D18"]],
-        [38] = [["D19"]],
-        [40] = [["D20"]],
-        [50] = [["D25"]],
+        var found = new List<(string[] Route, int Cost, int Lead)>();
+        var seen = new HashSet<string>();
 
-        // ── 2-dart finishes (odd setup + double) ────────────────────────────
-        [3]  = [["1","D1"]],
-        [5]  = [["1","D2"]],
-        [7]  = [["3","D2"]],
-        [9]  = [["1","D4"]],
-        [11] = [["3","D4"]],
-        [13] = [["5","D4"]],
-        [15] = [["7","D4"]],
-        [17] = [["1","D8"]],
-        [19] = [["3","D8"]],
-        [21] = [["5","D8"]],
-        [23] = [["7","D8"]],
-        [25] = [["9","D8"]],
-        [27] = [["11","D8"], ["3","D12"]],
-        [29] = [["13","D8"]],
-        [31] = [["15","D8"]],
-        [33] = [["1","D16"]],
-        [35] = [["3","D16"]],
-        [37] = [["5","D16"]],
-        [39] = [["7","D16"]],
-        [41] = [["9","D16"]],
-        [43] = [["11","D16"], ["3","D20"]],
-        [45] = [["13","D16"], ["5","D20"]],
-        [47] = [["15","D16"], ["7","D20"]],
-        [49] = [["17","D16"], ["9","D20"]],
-        [51] = [["19","D16"], ["11","D20"]],
-        [53] = [["13","D20"]],
-        [55] = [["15","D20"]],
-        [57] = [["17","D20"]],
-        [59] = [["19","D20"]],
-        [61] = [["T15","D8"]],
+        var finishers = Board.Where(d => !doubleOut || d.Multiplier == 2)
+                             .GroupBy(d => d.Score)
+                             .ToDictionary(g => g.Key, g => g.ToArray());
 
-        // ── 3-dart finishes ──────────────────────────────────────────────────
-        [62]  = [["T10","D16"], ["T12","D13"]],
-        [63]  = [["T13","D12"]],
-        [64]  = [["T16","D8"], ["T14","D11"]],
-        [65]  = [["T15","D10"], ["T19","D4"]],
-        [66]  = [["T10","D18"], ["T14","D12"]],
-        [67]  = [["T17","D8"]],
-        [68]  = [["T20","D4"], ["T16","D10"]],
-        [69]  = [["T19","D6"], ["T13","D15"]],
-        [70]  = [["T18","D8"], ["T10","D20"]],
-        [71]  = [["T13","D16"]],
-        [72]  = [["T16","D12"], ["T20","D6"]],
-        [73]  = [["T19","D8"]],
-        [74]  = [["T14","D16"], ["T20","D7"]],
-        [75]  = [["T17","D12"]],
-        [76]  = [["T20","D8"], ["T16","D14"]],
-        [77]  = [["T19","D10"], ["T15","D16"]],
-        [78]  = [["T18","D12"], ["T14","D18"]],
-        [79]  = [["T19","D11"], ["T13","D20"]],
-        [80]  = [["T20","D10"], ["T16","D16"]],
-        [81]  = [["T19","D12"], ["T15","D18"]],
-        [82]  = [["T14","D20"], ["T18","D14"]],
-        [83]  = [["T17","D16"]],
-        [84]  = [["T20","D12"], ["T16","D18"]],
-        [85]  = [["T15","D20"], ["T19","D14"]],
-        [86]  = [["T18","D16"], ["T14","D22"]],
-        [87]  = [["T17","D18"], ["T19","D15"]],
-        [88]  = [["T20","D14"], ["T16","D20"]],
-        [89]  = [["T19","D16"]],
-        [90]  = [["T20","D15"], ["T18","D18"]],
-        [91]  = [["T17","D20"], ["T19","D17"]],
-        [92]  = [["T20","D16"]],
-        [93]  = [["T19","D18"], ["T17","D21"]],
-        [94]  = [["T18","D20"]],
-        [95]  = [["T19","D19"], ["T15","D25"]],
-        [96]  = [["T20","D18"], ["T24","D12"]],
-        [97]  = [["T19","D20"]],
-        [98]  = [["T20","D19"]],
-        [99]  = [["T19","D21"], ["T17","D24"]],
-        [100] = [["T20","D20"], ["T19","D22"]],
-        [101] = [["T17","D25"]],
-        [102] = [["T20","D21"]],
-        [103] = [["T19","D23"], ["T17","D26"]],
-        [104] = [["T18","D25"]],
-        [105] = [["T19","D24"], ["T15","D25"]],
-        [106] = [["T20","D23"]],
-        [107] = [["T19","D25"]],
-        [108] = [["T20","D24"]],
-        [109] = [["T20","D25"]],
-        [110] = [["T20","20","D25"], ["T18","D28"]],
-        [111] = [["T20","19","D16"]],
-        [112] = [["T20","20","D16"], ["T19","15","D20"]],
-        [113] = [["T20","13","D20"]],
-        [114] = [["T20","14","D20"], ["T19","17","D20"]],
-        [115] = [["T20","15","D20"]],
-        [116] = [["T20","16","D20"], ["T19","19","D20"]],
-        [117] = [["T20","17","D20"], ["T19","20","D20"]],
-        [118] = [["T20","18","D20"]],
-        [119] = [["T19","D25"], ["T20","19","D16"]],
-        [120] = [["T20","20","D20"]],
-        [121] = [["T20","T11","D14"], ["T17","T10","D20"]],
-        [122] = [["T18","T8","D20"], ["T20","T10","D16"]],
-        [123] = [["T19","T6","D20"], ["T20","T13","D10"]],
-        [124] = [["T20","T14","D8"], ["T19","T7","D20"]],
-        [125] = [["25","T20","D20"], ["T19","T8","D20"]],
-        [126] = [["T19","T9","D18"], ["T20","T14","D10"]],
-        [127] = [["T20","T17","D8"]],
-        [128] = [["T18","T14","D10"], ["T20","T16","D8"]],
-        [129] = [["T19","T12","D12"], ["T20","T19","D4"]],
-        [130] = [["T20","T18","D8"], ["T20","T10","D20"]],
-        [131] = [["T20","T13","D16"]],
-        [132] = [["T20","T16","D12"]],
-        [133] = [["T20","T19","D8"]],
-        [134] = [["T20","T14","D16"]],
-        [135] = [["T20","T17","D12"]],
-        [136] = [["T20","T20","D8"]],
-        [137] = [["T20","T19","D10"]],
-        [138] = [["T20","T18","D12"]],
-        [139] = [["T20","T19","D11"]],
-        [140] = [["T20","T20","D10"]],
-        [141] = [["T20","T19","D12"]],
-        [142] = [["T20","T18","D16"]],
-        [143] = [["T20","T17","D16"]],  // rare but valid
-        [144] = [["T20","T20","D12"]],
-        [145] = [["T20","T19","D14"]],
-        [146] = [["T20","T18","D16"]],
-        [147] = [["T20","T17","D18"]],
-        [148] = [["T20","T20","D14"]],
-        [149] = [["T20","T19","D16"]],
-        [150] = [["T20","T18","D18"], ["T20","T20","D15"]],
-        [151] = [["T20","T17","D20"]],
-        [152] = [["T20","T20","D16"]],
-        [153] = [["T20","T19","D18"]],
-        [154] = [["T20","T18","D20"]],
-        [155] = [["T20","T19","D19"]],
-        [156] = [["T20","T20","D18"]],
-        [157] = [["T20","T19","D20"]],
-        [158] = [["T20","T20","D19"]],
-        [160] = [["T20","T20","D20"]],
-        [161] = [["T20","T17","D25"]],
-        [164] = [["T20","T18","D25"]],
-        [167] = [["T20","T19","D25"]],
-        [170] = [["T20","T20","D25"]],
-    };
+        void TryFinish(int need, params Dart[] setup)
+        {
+            if (!finishers.TryGetValue(need, out var options))
+                return;
+
+            foreach (var last in options)
+            {
+                // Double out: the double is always last. Single out: any dart can
+                // finish, so order the whole route highest first and drop repeats
+                // (T17 DB and DB T17 are the same route).
+                var darts = doubleOut
+                    ? setup.OrderByDescending(d => d.Score).ThenByDescending(d => d.Multiplier).Append(last).ToArray()
+                    : setup.Append(last).OrderByDescending(d => d.Score).ThenByDescending(d => d.Multiplier).ToArray();
+
+                var route = darts.Select(d => d.Label).ToArray();
+                if (!seen.Add(string.Join(' ', route)))
+                    continue;
+
+                var cost = setup.Sum(d => d.SetupCost) + FinishCost(last, doubleOut);
+                found.Add((route, cost, darts[0].Score));
+            }
+        }
+
+        // One dart
+        TryFinish(remaining);
+
+        // Two darts
+        if (dartsLeft >= 2)
+        {
+            foreach (var a in Board)
+            {
+                var need = remaining - a.Score;
+                if (need > 0)
+                    TryFinish(need, a);
+            }
+        }
+
+        // Three darts — set-up darts as an unordered pair (i <= j) so each combination appears once
+        if (dartsLeft >= 3)
+        {
+            for (var i = 0; i < Board.Length; i++)
+            {
+                for (var j = i; j < Board.Length; j++)
+                {
+                    var need = remaining - Board[i].Score - Board[j].Score;
+                    if (need > 0)
+                        TryFinish(need, Board[i], Board[j]);
+                }
+            }
+        }
+
+        return found.OrderBy(r => r.Route.Length)
+                    .ThenBy(r => r.Cost)
+                    .ThenByDescending(r => r.Lead)
+                    .Select(r => r.Route)
+                    .ToArray();
+    }
+
+    private static int FinishCost(Dart dart, bool doubleOut)
+    {
+        if (doubleOut)
+        {
+            return dart.Label switch
+            {
+                "D20" or "D16" => 0,
+                "D8" or "D10" or "D12" or "D18" => 1,
+                "DB" => 3,
+                _ => 2
+            };
+        }
+
+        return dart.Multiplier switch
+        {
+            1 when dart.Score == 25 => 1,
+            1 => 0,
+            3 => 1,
+            _ => dart.Label == "DB" ? 3 : 2
+        };
+    }
+
+    private static Dart[] BuildBoard()
+    {
+        var darts = new List<Dart>();
+        for (var n = 1; n <= 20; n++)
+        {
+            darts.Add(new Dart(n.ToString(), n, 1, SetupCost: 0));
+            darts.Add(new Dart($"D{n}", n * 2, 2, SetupCost: 3));
+            darts.Add(new Dart($"T{n}", n * 3, 3, SetupCost: 1));
+        }
+
+        darts.Add(new Dart("25", 25, 1, SetupCost: 2));
+        darts.Add(new Dart("DB", 50, 2, SetupCost: 3));
+        return darts.ToArray();
+    }
 }
-
-public record CheckoutSuggestion(int Score, string[][] Routes);

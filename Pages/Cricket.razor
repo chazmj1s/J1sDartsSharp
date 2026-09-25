@@ -3,224 +3,461 @@
 @using J1sDartSharp.Services
 @inject SessionHistoryService History
 
+@*
+    Cricket — American, Mickey Mouse or Mouse; Practice (one side, saved to
+    History) or Match (two sides, scoreboard only). Rules live in CricketGame.
+
+    Layout: left marks | pad | right marks. Enter the dart you hit; CricketGame
+    decides where it counts. When a dart could count in two places (Mouse:
+    T20 on 20 or T, D16 on 16 or D, DB on Bull or D, three in a bed), chips
+    under its slot let the thrower switch.
+    American / Mickey Mouse use a shared [T][D][number] column; Mouse uses
+    the full 01-style board so trebles and doubles of any number count.
+*@
+
 <div class="game-page cricket-page">
 
-    <div class="page-header">
-        <h2>Cricket</h2>
-        @if (_session is not null && !_session.IsComplete)
+    @* ── Setup (locked once the first dart is in) ─────────────────────── *@
+    <div class="x01-setup">
+        <div class="x01-seg">
+            <button class="x01-chip @On(!_match)" disabled="@Locked" @onclick="() => SetMatch(false)">Practice</button>
+            <button class="x01-chip @On(_match)" disabled="@Locked" @onclick="() => SetMatch(true)">Match</button>
+        </div>
+        <div class="x01-seg">
+            <button class="x01-chip @On(_variant == CricketVariant.American)" disabled="@Locked" @onclick="() => SetVariant(CricketVariant.American)">American</button>
+            <button class="x01-chip @On(_variant == CricketVariant.MickeyMouse)" disabled="@Locked" @onclick="() => SetVariant(CricketVariant.MickeyMouse)">Mickey Mouse</button>
+            <button class="x01-chip @On(_variant == CricketVariant.Mouse)" disabled="@Locked" @onclick="() => SetVariant(CricketVariant.Mouse)">Mouse</button>
+            <button class="x01-chip @On(IsEnglish)" disabled="@Locked" @onclick="() => SetVariant(CricketVariant.English)">English</button>
+        </div>
+    </div>
+
+    @if (_match && !Locked)
+    {
+        <div class="x01-names">
+            <input class="x01-name-input" maxlength="12" value="@_names[0]"
+                   @onchange="e => Rename(0, e.Value?.ToString())" aria-label="Left side name" />
+            <span class="x01-names-vs">vs</span>
+            <input class="x01-name-input" maxlength="12" value="@_names[1]"
+                   @onchange="e => Rename(1, e.Value?.ToString())" aria-label="Right side name" />
+        </div>
+    }
+
+    <div class="x01-status">
+        <span class="x01-status-text">@StatusText</span>
+        @if (Locked && !IsOver)
         {
-            <div class="session-meta">
-                Ochre <strong>@(_session.OchreCount + 1)</strong> &nbsp;|&nbsp;
-                Closed <strong>@_session.ClosedTargets/7</strong>
-            </div>
+            if (_confirmNew)
+            {
+                <span class="x01-confirm">
+                    Discard this game?
+                    <button class="x01-link" @onclick="NewGame">Yes</button>
+                    <button class="x01-link" @onclick="() => _confirmNew = false">No</button>
+                </span>
+            }
+            else
+            {
+                <button class="x01-link" @onclick="() => _confirmNew = true">New game</button>
+            }
         }
     </div>
 
-    @if (_session is null)
+    @if (IsEnglish)
     {
-        <div class="start-screen">
-            <p>Ready to practice Cricket?</p>
-            <button class="btn btn-primary" @onclick="StartSession">Start Session</button>
-        </div>
+        <EnglishCricketBoard Game="_english!" OnChanged="Refresh" OnPlayAgain="NewGame" />
     }
-    else if (_session.IsComplete)
+    else if (_game.IsOver)
     {
+        @* ── Result ──────────────────────────────────────────────────── *@
         <div class="result-card">
             <div class="result-icon">✅</div>
-            <h3>Game Complete!</h3>
-            <div class="stat-grid">
-                <div class="stat-item"><span class="stat-label">Ochres thrown</span><span class="stat-value">@_session.OchreCount</span></div>
-                <div class="stat-item"><span class="stat-label">Total marks</span><span class="stat-value">@_session.TotalMarks</span></div>
-                <div class="stat-item"><span class="stat-label">Duration</span><span class="stat-value">@FormatDuration(_session.Duration)</span></div>
-            </div>
+            <h3>@(_match ? $"{_game.Winner!.Name} wins!" : "Game Complete!")</h3>
+            <div class="result-mode-tag">@VariantName(_variant)</div>
+
+            @if (_match)
+            {
+                <div class="x01-match-result">
+                    <span></span>
+                    @foreach (var side in _game.Sides) { <span class="x01-mr-head">@side.Name</span> }
+                    @if (_game.ScoresPoints)
+                    {
+                        <span class="x01-mr-label">Points</span>
+                        @foreach (var side in _game.Sides) { <span>@side.Points</span> }
+                    }
+                    <span class="x01-mr-label">Closed</span>
+                    @foreach (var side in _game.Sides) { <span>@side.ClosedCount / @_game.Targets.Count</span> }
+                    <span class="x01-mr-label">Darts</span>
+                    @foreach (var side in _game.Sides) { <span>@side.DartsThrown</span> }
+                    <span class="x01-mr-label">Trips to the oche</span>
+                    @foreach (var side in _game.Sides) { <span>@side.OcheTrips</span> }
+                    <span class="x01-mr-label">MPR</span>
+                    @foreach (var side in _game.Sides) { <span>@side.Mpr.ToString("F2")</span> }
+                </div>
+            }
+            else
+            {
+                var me = _game.Sides[0];
+                <div class="stat-grid">
+                    <div class="stat-item"><span class="stat-label">Trips to the oche</span><span class="stat-value">@me.OcheTrips</span></div>
+                    <div class="stat-item"><span class="stat-label">Darts thrown</span><span class="stat-value">@me.DartsThrown</span></div>
+                    <div class="stat-item"><span class="stat-label">Marks per round</span><span class="stat-value">@me.Mpr.ToString("F2")</span></div>
+                    <div class="stat-item"><span class="stat-label">Duration</span><span class="stat-value">@FormatDuration(me.FinishedAt - _game.StartedAt)</span></div>
+                </div>
+                @if (_saveError is not null)
+                {
+                    <p class="x01-save-error">⚠ @_saveError</p>
+                }
+            }
+
             <div class="result-actions">
-                <button class="btn btn-primary" @onclick="StartSession">Play Again</button>
-                <a href="/history" class="btn btn-secondary">View History</a>
+                <button class="btn btn-primary" @onclick="NewGame">Play Again</button>
+                <button class="btn btn-secondary" @onclick="UndoFinish">↶ Undo last dart</button>
+                @if (!_match)
+                {
+                    <a href="/history" class="btn btn-secondary">View History</a>
+                }
             </div>
         </div>
     }
     else
     {
-        <!-- ── Dart slots ── -->
-        <div class="dart-slots">
-            @for (int i = 0; i < 3; i++)
+        @* ── Board ───────────────────────────────────────────────────── *@
+        var current = _game.CurrentSide;
+        var plan = _game.Live;
+        var mouse = _game.Variant == CricketVariant.Mouse;
+
+        <div class="ck-board @(_match ? "is-match" : "is-practice") @(mouse ? "is-mouse" : "")">
+
+            @for (var i = 0; i < _game.Sides.Count; i++)
             {
-                var idx  = i;
-                var dart = idx < _darts.Count ? _darts[idx] : (DartThrow?)null;
-                bool isNext = idx == _darts.Count;
-                <div class="dart-slot @(dart.HasValue ? "filled" : "") @(isNext ? "active" : "")">
-                    <span class="slot-label">@(idx + 1)</span>
-                    @if (dart.HasValue)
+                var side = _game.Sides[i];
+                var shown = side == current ? plan.After : side;
+                var col = i == 0 ? "x01-col-left" : "x01-col-right";
+                var active = _match && side == current;
+
+                <div class="x01-side-head ck-side-head @col @(active ? "is-active" : "")">
+                    @if (_match)
                     {
-                        <span class="slot-val">@DartLabel(dart.Value)</span>
+                        <div class="x01-side-name">@side.Name</div>
                     }
-                    else
-                    {
-                        <span class="slot-empty">—</span>
-                    }
+                    <div class="x01-side-left">
+                        @(_game.ScoresPoints ? shown.Points.ToString() : $"{shown.ClosedCount}/{_game.Targets.Count}")
+                    </div>
+                    <div class="x01-side-sub">
+                        @(side.DartsThrown + (side == current ? _game.CurrentDarts.Count : 0)) darts ·
+                        @side.OcheTrips @(side.OcheTrips == 1 ? "trip" : "trips")
+                    </div>
+                    <div class="x01-side-sub">MPR @side.Mpr.ToString("F2")</div>
                 </div>
-            }
-        </div>
 
-        <!-- ── Unified target rows ── -->
-        <div class="cricket-unified">
-            @foreach (var target in CricketTargets)
-            {
-                var key    = target.Key;
-                var marks  = _session.Marks[key];
-                var closed = marks >= 3;
-                var num    = target.Number;
-                bool isBull = num == 25;
-                bool full   = _darts.Count >= 3;
-
-                <div class="cu-row @(closed ? "cu-closed" : "")">
-                    <!-- Chalk mark indicator -->
-                    <ChalkMark Marks="marks" />
-
-                    <!-- Number = single hit -->
-                    <button class="cu-btn cu-single" disabled="@(closed || full)"
-                            @onclick="() => AddDart(num, 1)">
-                        @target.Display
-                    </button>
-
-                    <!-- Double -->
-                    <button class="cu-btn cu-d" disabled="@(closed || full)"
-                            @onclick="() => AddDart(num, 2)">D</button>
-
-                    <!-- Triple (not for Bull) -->
-                    @if (!isBull)
+                <div class="ck-marks @col @(active ? "is-active" : "")">
+                    @foreach (var target in _game.Targets)
                     {
-                        <button class="cu-btn cu-t" disabled="@(closed || full)"
-                                @onclick="() => AddDart(num, 3)">T</button>
-                    }
-                    else
-                    {
-                        <span class="cu-spacer"></span>
+                        var marks = shown.Marks[target.Key];
+                        <div class="ck-mark-cell @(marks >= 3 ? "is-closed" : "")">
+                            @if (mouse)
+                            {
+                                <span class="ck-mark-label">@target.Label</span>
+                            }
+                            <ChalkMark Marks="marks" />
+                        </div>
                     }
                 </div>
             }
 
-            <!-- Miss row -->
-            <div class="cu-row cu-miss-row">
-                <span class="cu-mark"></span>
-                <button class="cu-btn cu-miss" disabled="@(_darts.Count >= 3)"
-                        @onclick="() => AddDart(0, 1)">Miss</button>
+            @* Current turn: slots, and where each dart counts *@
+            <div class="x01-slots ck-slots">
+                @for (var d = 0; d < 3; d++)
+                {
+                    var idx = d;
+                    DartThrow? dart = idx < _game.CurrentDarts.Count ? _game.CurrentDarts[idx] : null;
+                    var placement = idx < plan.Darts.Count ? plan.Darts[idx] : null;
+                    var dead = dart.HasValue && !plan.CountsAsBed && placement is { Target: null };
+
+                    <div class="dart-slot ck-slot @(dart.HasValue ? "filled" : "") @(idx == _game.CurrentDarts.Count ? "active" : "") @(dead ? "is-dead" : "")">
+                        <span class="slot-label">@(idx + 1)</span>
+                        @if (dart.HasValue)
+                        {
+                            <span class="slot-val">@DartLabel(dart.Value)</span>
+                            @if (!plan.CountsAsBed && placement is { IsChoice: true })
+                            {
+                                <div class="ck-chips">
+                                    @foreach (var option in placement.Options)
+                                    {
+                                        var o = option;
+                                        <button class="ck-chip @On(placement.Target == o)" @onclick="() => Choose(idx, o)">@TargetLabel(o)</button>
+                                    }
+                                </div>
+                            }
+                            else if (mouse && !plan.CountsAsBed && placement?.Target is { } counted)
+                            {
+                                <div class="ck-chips"><span class="ck-chip-tag">→ @TargetLabel(counted)</span></div>
+                            }
+                        }
+                        else
+                        {
+                            <span class="slot-empty">—</span>
+                        }
+                    </div>
+                }
+                <div class="slot-total">
+                    @(_game.CurrentDarts.Count > 0 ? $"+{plan.Marks}" : "")
+                </div>
+
+                @if (plan.BedIsChoice)
+                {
+                    <div class="ck-bed">
+                        <span class="ck-bed-label">Three in a bed:</span>
+                        <button class="ck-chip @On(!plan.CountsAsBed)" @onclick="() => AsBed(false)">Each dart</button>
+                        <button class="ck-chip @On(plan.CountsAsBed)" @onclick="() => AsBed(true)">3B</button>
+                    </div>
+                }
+                else if (plan.CountsAsBed)
+                {
+                    <div class="ck-bed"><span class="ck-chip-tag">→ 3B</span></div>
+                }
             </div>
-        </div>
 
-        <!-- ── Actions ── -->
-        <div class="pad-actions">
-            <button class="btn-back" @onclick="BackDart">← Back</button>
-            <button class="btn-enter" @onclick="CommitOchre" disabled="@(_darts.Count == 0)">
-                Enter Ochre (@_darts.Count/3)
-            </button>
-        </div>
+            @if (mouse)
+            {
+                @* Mouse: full board, [T][D][20..11]  [10..1][D][T] *@
+                <div class="x01-keys ck-keys-mouse">
+                    @for (var r = 0; r < 10; r++)
+                    {
+                        var hi = 20 - r;
+                        var lo = 10 - r;
+                        <button class="sdt-btn sdt-t x01-key" disabled="@KeysOff" @onclick="() => Throw(hi, 3)">T</button>
+                        <button class="sdt-btn sdt-d x01-key" disabled="@KeysOff" @onclick="() => Throw(hi, 2)">D</button>
+                        <button class="sdt-btn sdt-single x01-key x01-num" disabled="@KeysOff" @onclick="() => Throw(hi, 1)">@hi</button>
+                        <button class="sdt-btn sdt-single x01-key x01-num" disabled="@KeysOff" @onclick="() => Throw(lo, 1)">@lo</button>
+                        <button class="sdt-btn sdt-d x01-key" disabled="@KeysOff" @onclick="() => Throw(lo, 2)">D</button>
+                        <button class="sdt-btn sdt-t x01-key" disabled="@KeysOff" @onclick="() => Throw(lo, 3)">T</button>
+                    }
+                </div>
 
-        <button class="btn btn-abandon" @onclick="AbandonSession">Abandon Session</button>
+                <div class="x01-bottom ck-bottom-mouse">
+                    <div class="x01-half">
+                        <button class="sdt-btn sdt-single x01-key x01-num" disabled="@KeysOff" @onclick="() => Throw(25, 1)">BULL</button>
+                        <button class="sdt-btn sdt-d x01-key" disabled="@KeysOff" @onclick="() => Throw(25, 2)">D</button>
+                    </div>
+                    <div class="x01-half">
+                        <button class="btn-back x01-wide" disabled="@(!_game.CanUndo)" @onclick="Undo">← Back</button>
+                    </div>
+                    <div class="x01-half">
+                        <button class="sdt-btn sdt-miss x01-key" disabled="@KeysOff" @onclick="() => Throw(0, 1)">Miss</button>
+                    </div>
+                    <div class="x01-half">
+                        <button class="btn-enter x01-wide @(plan.Wins ? "btn-enter-finish" : "")"
+                                disabled="@(!_game.CanEnter)" @onclick="EnterAsync">@EnterLabel(plan)</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                @* American / Mickey Mouse: shared [T][D][number] column *@
+                <div class="ck-keys">
+                    @foreach (var target in _game.Targets)
+                    {
+                        var t = target;
+                        var dim = _game.IsDeadFor(plan, t.Key) ? "is-dead" : "";
+
+                        if (t.Number == 25)
+                        {
+                            <span class="ck-spacer"></span>
+                            <button class="sdt-btn sdt-d x01-key @dim" disabled="@KeysOff" @onclick="() => Throw(25, 2)">D</button>
+                            <button class="sdt-btn sdt-single x01-key x01-num @dim" disabled="@KeysOff" @onclick="() => Throw(25, 1)">B</button>
+                        }
+                        else
+                        {
+                            <button class="sdt-btn sdt-t x01-key @dim" disabled="@KeysOff" @onclick="() => Throw(t.Number, 3)">T</button>
+                            <button class="sdt-btn sdt-d x01-key @dim" disabled="@KeysOff" @onclick="() => Throw(t.Number, 2)">D</button>
+                            <button class="sdt-btn sdt-single x01-key x01-num @dim" disabled="@KeysOff" @onclick="() => Throw(t.Number, 1)">@t.Label</button>
+                        }
+                    }
+                </div>
+
+                <div class="x01-bottom ck-bottom">
+                    <div class="x01-half">
+                        <button class="sdt-btn sdt-miss x01-key" disabled="@KeysOff" @onclick="() => Throw(0, 1)">Miss</button>
+                    </div>
+                    <div class="x01-half">
+                        <button class="btn-back x01-wide" disabled="@(!_game.CanUndo)" @onclick="Undo">← Back</button>
+                    </div>
+                    <div class="x01-half ck-enter">
+                        <button class="btn-enter x01-wide @(plan.Wins ? "btn-enter-finish" : "")"
+                                disabled="@(!_game.CanEnter)" @onclick="EnterAsync">@EnterLabel(plan)</button>
+                    </div>
+                </div>
+            }
+        </div>
     }
 </div>
 
 @code {
-    private record CricketTarget(string Key, string Display, int Number);
+    private CricketGame _game = null!;
+    private EnglishCricketGame? _english;   // English cricket (match only)
+    private CricketSession? _saved;
+    private string? _saveError;
+    private bool _confirmNew;
 
-    private static readonly CricketTarget[] CricketTargets =
+    // Setup — defaults: practice, American
+    private bool _match;
+    private CricketVariant _variant = CricketVariant.American;
+    private readonly string[] _names = ["Home", "Away"];
+
+    private bool IsEnglish => _variant == CricketVariant.English;
+
+    private bool Locked => IsEnglish ? _english?.HasStarted == true : _game.HasStarted;
+
+    private bool IsOver => IsEnglish ? _english?.IsOver == true : _game.IsOver;
+
+    private bool KeysOff => !_game.CanAddDart;
+
+    protected override void OnInitialized() => NewGame();
+
+    // ── Setup ────────────────────────────────────────────────────────────────
+
+    private void NewGame()
     {
-        new("20","20",20), new("19","19",19), new("18","18",18),
-        new("17","17",17), new("16","16",16), new("15","15",15),
-        new("Bull","Bull",25)
-    };
-
-    private CricketSession? _session;
-    private List<DartThrow> _darts = new();
-
-    private void StartSession()
-    {
-        _session = new CricketSession { StartedAt = DateTime.Now };
-        _darts.Clear();
-    }
-
-    private void AddDart(int number, int multiplier)
-    {
-        if (_session is null || _darts.Count >= 3) return;
-        _darts.Add(new DartThrow(number, multiplier));
-
-        // Apply mark immediately so display updates live
-        if (number != 0)
-        {
-            var key = number == 25 ? "Bull" : number.ToString();
-            if (_session.Marks.ContainsKey(key) && _session.Marks[key] < 3)
-            {
-                var added = Math.Min(multiplier, 3 - _session.Marks[key]);
-                _session.Marks[key] += added;
-            }
-        }
-    }
-
-    private void BackDart()
-    {
-        if (_session is null) return;
-
-        if (_darts.Count > 0)
-        {
-            // Undo the last dart's mark
-            var last = _darts[_darts.Count - 1];
-            if (last.Number != 0)
-            {
-                var key = last.Number == 25 ? "Bull" : last.Number.ToString();
-                if (_session.Marks.ContainsKey(key))
-                {
-                    var added = Math.Min(last.Multiplier, 3 - Math.Max(0, _session.Marks[key] - last.Multiplier));
-                    _session.Marks[key] = Math.Max(0, _session.Marks[key] - last.Multiplier);
-                }
-            }
-            _darts.RemoveAt(_darts.Count - 1);
-        }
+        if (IsEnglish)
+            _english = new EnglishCricketGame(new[] { _names[0], _names[1] });
         else
+            _game = new CricketGame(_variant, _match ? new[] { _names[0], _names[1] } : new[] { "You" });
+
+        _saved = null;
+        _saveError = null;
+        _confirmNew = false;
+    }
+
+    private void SetMatch(bool match)
+    {
+        if (Locked) return;
+        _match = match;
+        if (!match && IsEnglish)
+            _variant = CricketVariant.American;   // English is match play only
+        NewGame();
+    }
+
+    private void SetVariant(CricketVariant variant)
+    {
+        if (Locked) return;
+        _variant = variant;
+        if (variant == CricketVariant.English)
+            _match = true;                         // English is match play only
+        NewGame();
+    }
+
+    private void Rename(int index, string? name)
+    {
+        var clean = string.IsNullOrWhiteSpace(name) ? (index == 0 ? "Home" : "Away") : name.Trim();
+        _names[index] = clean;
+        if (index < _game.Sides.Count)
+            _game.Sides[index].Name = clean;
+        if (_english is not null)
+            _english.Players[index].Name = clean;
+    }
+
+    // ── Turn actions ─────────────────────────────────────────────────────────
+
+    private void Throw(int number, int multiplier)
+    {
+        _confirmNew = false;
+        _game.AddDart(new DartThrow(number, multiplier));
+    }
+
+    private void Choose(int index, string target) => _game.Choose(index, target);
+
+    private void AsBed(bool asBed) => _game.CountAsBed(asBed);
+
+    private void Undo() => _game.Undo();
+
+    /// <summary>English board changed something; the page re-renders (setup lock, status).</summary>
+    private void Refresh() => _confirmNew = false;
+
+    private async Task EnterAsync()
+    {
+        if (!_game.Enter() || !_game.IsOver || _match)
+            return;
+
+        // Practice game finished: save it to History.
+        _saved = _game.ToPracticeSession();
+        try
         {
-            AbandonSession();
+            await History.SaveCricketSessionAsync(_saved);
+        }
+        catch (Exception ex)
+        {
+            _saveError = $"Couldn't save to History: {ex.Message}";
         }
     }
 
-    private async Task CommitOchre()
+    /// <summary>Reopen a finished game (and take a practice game back out of History).</summary>
+    private async Task UndoFinish()
     {
-        if (_session is null || _darts.Count == 0) return;
-
-        _session.OchreCount++;
-
-        foreach (var dart in _darts)
+        if (_saved is not null)
         {
-            if (dart.Number == 0) continue;
-            var key = dart.Number == 25 ? "Bull" : dart.Number.ToString();
-            _session.OchreLog.Add(new CricketOchreEntry(_session.OchreCount, key, dart.Multiplier));
+            var id = _saved.Id;
+            _saved = null;
+            _saveError = null;
+            try
+            {
+                await History.DeleteSessionAsync(id);
+            }
+            catch
+            {
+                // Leave the history row; the game can still be corrected and re-saved.
+            }
         }
 
-        _darts.Clear();
-
-        if (_session.AllClosed)
-            await FinalizeSessionAsync();
+        _game.Undo();
     }
 
-    private async Task FinalizeSessionAsync()
+    // ── Display helpers ──────────────────────────────────────────────────────
+
+    private string StatusText
     {
-        if (_session is null) return;
-        _session.CompletedAt = DateTime.Now;
-        _session.IsComplete = true;
-        await History.SaveCricketSessionAsync(_session);
+        get
+        {
+            if (IsOver) return "";
+
+            if (IsEnglish && _english is not null)
+            {
+                var thrower = _english.Thrower;
+                return _english.BatterUp
+                    ? $"{thrower.Name} batting · runs over {EnglishCricketGame.RunThreshold} count"
+                    : $"{thrower.Name} bowling · bulls take wickets ({_english.WicketsLeft} left)";
+            }
+
+            var plan = _game.Live;
+            var who = _match ? $"{_game.CurrentSide.Name} to throw · " : "";
+            if (plan.Wins) return who + "Game shot! Tap Enter to confirm";
+            if (_game.CurrentDarts.Count == 3) return who + "Tap Enter";
+            if (plan.Darts.Any(p => p.IsChoice) || plan.BedIsChoice) return who + "Tap a chip to change where a dart counts";
+            return who + $"Dart {_game.CurrentDarts.Count + 1} of 3";
+        }
     }
 
-    private void AbandonSession()
-    {
-        _session = null;
-        _darts.Clear();
-    }
-
+    private static string EnterLabel(CricketTurnPlan plan) =>
+        plan.Wins ? "✔ Game shot" : $"Enter ({plan.Darts.Count} / 3)";
 
     private static string DartLabel(DartThrow d)
     {
-        var n = d.Number == 0 ? "Miss" : d.Number == 25 ? "Bull" : d.Number.ToString();
-        return d.Multiplier switch { 2 => $"D{n}", 3 => $"T{n}", _ => n };
+        if (d.Number == 0) return "0";
+        if (d.Number == 25) return d.Multiplier == 2 ? "DB" : "25";
+        return d.Multiplier switch { 2 => $"D{d.Number}", 3 => $"T{d.Number}", _ => d.Number.ToString() };
     }
 
-    private string FormatDuration(TimeSpan? ts) =>
+    private static string TargetLabel(string key) => key == CricketGame.Bull ? "B" : key;
+
+    private static string VariantName(CricketVariant v) => v switch
+    {
+        CricketVariant.MickeyMouse => "Mickey Mouse",
+        CricketVariant.Mouse => "Mouse",
+        CricketVariant.English => "English",
+        _ => "American"
+    };
+
+    private static string On(bool on) => on ? "is-on" : "";
+
+    private static string FormatDuration(TimeSpan? ts) =>
         ts.HasValue ? $"{(int)ts.Value.TotalMinutes}m {ts.Value.Seconds}s" : "—";
 }

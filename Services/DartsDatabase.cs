@@ -6,7 +6,8 @@ namespace J1sDartSharp.Services;
 
 /// <summary>
 /// Persistent SQLite store for all practice sessions and dart-level logs.
-/// Thread-safe via SQLiteAsyncConnection.
+/// Thread-safe via SQLiteAsyncConnection. New columns (e.g. X01InMode) are
+/// added automatically by CreateTableAsync on first run.
 /// </summary>
 public class DartsDatabase
 {
@@ -32,73 +33,82 @@ public class DartsDatabase
     {
         await InitAsync();
 
+        var id = s.Id.ToString();
         var row = new SessionRow
         {
-            Id                = s.Id.ToString(),
+            Id                = id,
             Game              = "Cricket",
             StartedAt         = s.StartedAt,
             CompletedAt       = s.CompletedAt,
             IsComplete        = s.IsComplete,
-            CricketOchres     = s.OchreCount,
-            CricketTotalMarks = s.TotalMarks
+            CricketOches        = s.OcheCount,
+            CricketTotalMarks   = s.TotalMarks,
+            CricketVariant      = s.Variant.ToString(),
+            CricketDarts        = s.DartsThrown
         };
 
         await _db!.InsertOrReplaceAsync(row);
-        await SaveDartLogAsync(s.Id.ToString(), s.OchreLog);
+        await SaveDartLogAsync(id, s.OcheLog);
     }
 
     public async Task SaveX01SessionAsync(X01Session s)
     {
         await InitAsync();
 
+        var id = s.Id.ToString();
         var row = new SessionRow
         {
-            Id                    = s.Id.ToString(),
-            Game                  = s.Game == GameType.ThreeOhOne ? "301" : "501",
+            Id                    = id,
+            Game                  = s.StartScore.ToString(),   // "301" | "501"
             StartedAt             = s.StartedAt,
             CompletedAt           = s.CompletedAt,
             IsComplete            = s.IsComplete,
             X01StartScore         = s.StartScore,
+            X01InMode             = s.InMode.ToString(),
+            X01OutMode            = s.OutMode.ToString(),
             X01DartsToDoubleIn    = s.DartsToDoubleIn,
             X01DoubleInAt         = s.DoubleInAt,
-            X01AvgPerOchre        = s.AveragePerOchre,
-            X01ScoringOchres      = s.ScoringOchres,
+            X01AvgPerOche         = s.AveragePerOche,
+            X01OcheTrips          = s.OcheTrips,
             X01DoubleOutAchieved  = s.DoubleOutAchieved,
             X01DoubleOutAt        = s.DoubleOutAt,
             X01FinishingDart      = s.FinishingDart,
-            X01TotalDarts         = s.TotalDarts,
+            X01TotalDarts         = s.DartsThrown,
             X01BustCount          = s.BustCount
         };
 
         await _db!.InsertOrReplaceAsync(row);
 
-        // Persist per-ochre log as dart rows (score-per-ochre — full dart detail only
-        // available if the caller also passes dart log; extend as needed)
-        var dartRows = s.OchreLog.Select((e, i) => new DartLogRow
+        // Per-trip totals (not per dart): Number holds the trip's score, 0 for a bust.
+        await _db!.Table<DartLogRow>().DeleteAsync(r => r.SessionId == id);
+        var tripRows = s.OcheLog.Select(e => new DartLogRow
         {
-            SessionId    = s.Id.ToString(),
-            OchreNumber  = e.OchreNumber,
-            DartInOchre  = 1,       // ochre-level only for now; full dart detail is an extension
-            Number       = e.Score, // using Score field as aggregate per ochre
-            Multiplier   = 1
+            SessionId  = id,
+            OcheNumber = e.OcheNumber,
+            DartInOche = 1,
+            Number     = e.Score,
+            Multiplier = 1
         }).ToList();
 
-        await _db!.InsertAllAsync(dartRows);
+        if (tripRows.Count > 0)
+            await _db!.InsertAllAsync(tripRows);
     }
 
-    private async Task SaveDartLogAsync(string sessionId, List<CricketOchreEntry> log)
+    private async Task SaveDartLogAsync(string sessionId, List<CricketOcheEntry> log)
     {
-        var rows = log.Select((e, i) => new DartLogRow
+        await _db!.Table<DartLogRow>().DeleteAsync(r => r.SessionId == sessionId);
+
+        var rows = log.Select(e => new DartLogRow
         {
             SessionId     = sessionId,
-            OchreNumber   = e.OchreNumber,
-            DartInOchre   = 1,
+            OcheNumber    = e.OcheNumber,
+            DartInOche    = 1,
             Number        = e.MarksScored,
             Multiplier    = 1,
             CricketTarget = e.Target
         }).ToList();
 
-        if (rows.Any())
+        if (rows.Count > 0)
             await _db!.InsertAllAsync(rows);
     }
 
@@ -126,7 +136,7 @@ public class DartsDatabase
         await InitAsync();
         return await _db!.Table<DartLogRow>()
                          .Where(r => r.SessionId == sessionId)
-                         .OrderBy(r => r.OchreNumber).ThenBy(r => r.DartInOchre)
+                         .OrderBy(r => r.OcheNumber).ThenBy(r => r.DartInOche)
                          .ToListAsync();
     }
 
@@ -140,8 +150,8 @@ public class DartsDatabase
         return new CricketStats
         {
             SessionsPlayed = rows.Count,
-            AvgOchres      = rows.Average(r => r.CricketOchres ?? 0),
-            BestOchres     = rows.Min(r => r.CricketOchres ?? int.MaxValue),
+            AvgOches       = rows.Average(r => r.CricketOches ?? 0),
+            BestOches      = rows.Min(r => r.CricketOches ?? int.MaxValue),
             AvgTotalMarks  = rows.Average(r => r.CricketTotalMarks ?? 0),
             BestTotalMarks = rows.Min(r => r.CricketTotalMarks ?? int.MaxValue)
         };
@@ -152,7 +162,7 @@ public class DartsDatabase
         var rows = await GetSessionsByGameAsync(game);
         if (!rows.Any()) return new X01Stats();
 
-        var withDI  = rows.Where(r => r.X01DartsToDoubleIn.HasValue).ToList();
+        var withDI  = rows.Where(r => r.X01InMode != nameof(InMode.SingleIn) && r.X01DartsToDoubleIn > 0).ToList();
         var withDO  = rows.Where(r => r.X01DoubleOutAchieved == true && r.X01DoubleOutAt.HasValue && r.X01DoubleInAt.HasValue).ToList();
 
         TimeSpan? AvgSpan(IEnumerable<double> secs)
@@ -174,8 +184,8 @@ public class DartsDatabase
             BestDartsToDoubleIn  = withDI.Any() ? withDI.Min(r => r.X01DartsToDoubleIn!.Value) : 0,
             AvgTimeToDoubleIn    = AvgSpan(withDI.Where(r => r.X01DoubleInAt.HasValue)
                                                   .Select(r => (r.X01DoubleInAt!.Value - r.StartedAt).TotalSeconds)),
-            AvgScorePerOchre     = rows.Average(r => r.X01AvgPerOchre ?? 0),
-            BestScorePerOchre    = rows.Max(r => r.X01AvgPerOchre ?? 0),
+            AvgScorePerOche      = rows.Average(r => r.X01AvgPerOche ?? 0),
+            BestScorePerOche     = rows.Max(r => r.X01AvgPerOche ?? 0),
             AvgTimeToDoubleOut   = AvgSpan(withDO.Select(r => (r.X01DoubleOutAt!.Value - r.X01DoubleInAt!.Value).TotalSeconds)),
             BestTimeToDoubleOut  = BestSpan(withDO.Select(r => (r.X01DoubleOutAt!.Value - r.X01DoubleInAt!.Value).TotalSeconds)),
             AvgBusts             = rows.Average(r => r.X01BustCount ?? 0)

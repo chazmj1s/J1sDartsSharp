@@ -1,31 +1,105 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject SessionHistoryService History
+@inject NavigationManager Nav
+
+@*
+    Two-level navigation:
+      Manage   (default) → Matches · Roster        (league, via the Api)
+      Play               → 01 · Cricket · History  (practice + match scoring, local only)
+    The active section is derived from the current URL, so deep links and
+    back/forward keep the right tabs highlighted.
+*@
 
 <div class="app-shell">
     <header class="app-header">
         <div class="header-inner">
             <span class="bullseye-icon">🎯</span>
-            <h1 class="app-title">DARTS PRACTICE</h1>
+            <h1 class="app-title">DART SHARP</h1>
+
+            <nav class="section-nav" aria-label="Sections">
+                <a href="/league/matches" class="section-link @(IsPlay ? "" : "active")">Manage</a>
+                <a href="/x01" class="section-link @(IsPlay ? "active" : "")">Play</a>
+            </nav>
         </div>
-        <nav class="main-nav">
-            <NavLink href="/" Match="NavLinkMatch.All" class="nav-link">Home</NavLink>
-            <NavLink href="/cricket" class="nav-link">Cricket</NavLink>
-            <NavLink href="/x01/301" class="nav-link">301</NavLink>
-            <NavLink href="/x01/501" class="nav-link">501</NavLink>
-            <NavLink href="/history" class="nav-link">History</NavLink>
-            <NavLink href="/league/matches" class="nav-link">Matches</NavLink>
-            <NavLink href="/league/players" class="nav-link">Roster</NavLink>
+
+        <nav class="main-nav" aria-label="@(IsPlay ? "Play" : "Manage")">
+            @if (IsPlay)
+            {
+                <NavLink href="/x01" class="nav-link">01</NavLink>
+                <NavLink href="/cricket" class="nav-link">Cricket</NavLink>
+                <NavLink href="/history" class="nav-link">History</NavLink>
+            }
+            else
+            {
+                <NavLink href="/league/matches" class="nav-link">Matches</NavLink>
+                <NavLink href="/league/players" class="nav-link">Roster</NavLink>
+            }
         </nav>
     </header>
 
     <main class="main-content">
-        @Body
+        @if (_loadError is not null)
+        {
+            <div class="app-error">
+                <strong>Couldn't load practice history.</strong>
+                <pre>@_loadError</pre>
+            </div>
+        }
+
+        @* Shows the actual exception on screen instead of the generic
+           "An unhandled error has occurred" bar. Clears on navigation. *@
+        <ErrorBoundary @ref="_errorBoundary">
+            <ChildContent>
+                @Body
+            </ChildContent>
+            <ErrorContent Context="ex">
+                <div class="app-error">
+                    <strong>Something went wrong on this screen.</strong>
+                    <pre>@ex</pre>
+                    <button class="btn btn-secondary" @onclick="() => _errorBoundary?.Recover()">Try again</button>
+                </div>
+            </ErrorContent>
+        </ErrorBoundary>
     </main>
 </div>
 
 @code {
+    private static readonly string[] PlayPrefixes = ["x01", "cricket", "history"];
+
+    /// <summary>True on Play pages; everything else (incl. "/") is Manage.</summary>
+    private bool IsPlay
+    {
+        get
+        {
+            var path = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0];
+            var first = path.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+            return PlayPrefixes.Contains(first, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private ErrorBoundary? _errorBoundary;
+    private string? _loadError;
+
     protected override async Task OnInitializedAsync()
     {
-        await History.LoadAsync();
+        Nav.LocationChanged += OnLocationChanged;
+        try
+        {
+            await History.LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.ToString();
+        }
     }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
+        InvokeAsync(() =>
+        {
+            _errorBoundary?.Recover();
+            StateHasChanged();
+        });
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
 }

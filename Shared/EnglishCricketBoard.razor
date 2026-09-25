@@ -1,0 +1,209 @@
+@using J1sDartSharp.Models
+
+@*
+    English cricket board (match play). Hosted by Pages/Cricket.razor, which owns
+    setup and "New game". Left column = side 0, right = side 1; each shows runs,
+    role, and that player's trips (batting "total / runs", bowling "W n").
+    The middle shows the innings, the 10 chalk wickets, and the thrower's pad:
+    the standard cricket column for the batter ([T][D][20..15], [ ][D][B]),
+    [25] [BULL] [Miss] for the bowler. Hits outside 15–20 / bull go in as Miss.
+*@
+
+@if (Game.IsOver)
+{
+    <div class="result-card">
+        <div class="result-icon">🏏</div>
+        <h3>@(Game.Winner is null ? "It's a tie!" : $"{Game.Winner.Name} wins!")</h3>
+        <div class="result-mode-tag">English cricket</div>
+        <div class="x01-match-result">
+            <span></span>
+            @foreach (var p in Game.Players) { <span class="x01-mr-head">@p.Name</span> }
+            <span class="x01-mr-label">Runs</span>
+            @foreach (var p in Game.Players) { <span>@p.Runs</span> }
+            <span class="x01-mr-label">Wickets taken</span>
+            @foreach (var p in Game.Players) { <span>@p.WicketsTaken</span> }
+            <span class="x01-mr-label">Darts</span>
+            @foreach (var p in Game.Players) { <span>@p.DartsThrown</span> }
+            <span class="x01-mr-label">Trips to the oche</span>
+            @foreach (var p in Game.Players) { <span>@p.OcheTrips</span> }
+        </div>
+        <div class="result-actions">
+            <button class="btn btn-primary" @onclick="() => OnPlayAgain.InvokeAsync()">Play Again</button>
+            <button class="btn btn-secondary" @onclick="Undo">↶ Undo last dart</button>
+        </div>
+    </div>
+}
+else
+{
+    var live = Game.Live;
+    var batting = Game.BatterUp;
+
+    <div class="ck-board ek-board is-match @(batting ? "" : "is-bowling")">
+
+        @foreach (var p in Game.Players)
+        {
+            var col = p.Index == 0 ? "x01-col-left" : "x01-col-right";
+            var isBatter = p == Game.Batter;
+            var active = p == Game.Thrower;
+            var liveRuns = active && batting ? live.Runs : 0;
+            var trips = p.Trips.TakeLast(10);
+
+            <div class="x01-side-head @col @(active ? "is-active" : "")">
+                <div class="x01-side-name">@p.Name</div>
+                <div class="ek-role @(isBatter ? "is-bat" : "is-bowl")">@(isBatter ? "BATTING" : "BOWLING")</div>
+                <div class="x01-side-left">@(p.Runs + liveRuns)</div>
+                <div class="x01-side-sub">runs · @p.WicketsTaken wkts taken</div>
+                <div class="x01-side-sub">@p.DartsThrown darts · @p.OcheTrips trips</div>
+            </div>
+
+            <div class="x01-trips ek-trips @col">
+                @foreach (var trip in trips)
+                {
+                    <div class="x01-trip">
+                        @if (trip.Batting)
+                        {
+                            <span class="x01-trip-left">@trip.Total</span>
+                            <span class="x01-trip-sep">/</span>
+                            <span class="x01-trip-scored">@trip.Runs</span>
+                        }
+                        else
+                        {
+                            <span class="ek-trip-wkts">@(trip.Wickets > 0 ? $"W{trip.Wickets}" : "—")</span>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @* Innings, wickets, and this turn's darts *@
+        <div class="ek-center-head">
+            <div class="ek-innings">
+                Innings @Game.Innings · @Game.Batter.Name batting
+                @if (Game.Target is int target)
+                {
+                    <span class="ek-target">· needs @Math.Max(0, target - Game.Batter.Runs - (batting ? live.Runs : 0))</span>
+                }
+            </div>
+            <div class="ek-wickets" aria-label="@Game.WicketsLeft wickets left">
+                @for (var w = 0; w < EnglishCricketGame.WicketsPerInnings; w++)
+                {
+                    var down = w >= Game.WicketsLeft - (batting ? 0 : live.Wickets);
+                    <span class="ek-wicket @(down ? "is-down" : "")"></span>
+                }
+            </div>
+            <div class="x01-slots">
+                @for (var d = 0; d < 3; d++)
+                {
+                    var idx = d;
+                    DartThrow? dart = idx < Game.CurrentDarts.Count ? Game.CurrentDarts[idx] : null;
+                    <div class="dart-slot @(dart.HasValue ? "filled" : "") @(idx == Game.CurrentDarts.Count ? "active" : "")">
+                        <span class="slot-label">@(idx + 1)</span>
+                        @if (dart.HasValue)
+                        {
+                            <span class="slot-val">@DartLabel(dart.Value)</span>
+                        }
+                        else
+                        {
+                            <span class="slot-empty">—</span>
+                        }
+                    </div>
+                }
+                <div class="slot-total">
+                    @(Game.CurrentDarts.Count == 0 ? "" : batting ? live.Total.ToString() : $"W{live.Wickets}")
+                </div>
+            </div>
+        </div>
+
+        @if (batting)
+        {
+            @* Batter: standard cricket column — [T][D][20..15], [ ][D][B] *@
+            <div class="ck-keys">
+                @for (var n = 20; n >= 15; n--)
+                {
+                    var num = n;
+                    <button class="sdt-btn sdt-t x01-key" disabled="@KeysOff" @onclick="() => Throw(num, 3)">T</button>
+                    <button class="sdt-btn sdt-d x01-key" disabled="@KeysOff" @onclick="() => Throw(num, 2)">D</button>
+                    <button class="sdt-btn sdt-single x01-key x01-num" disabled="@KeysOff" @onclick="() => Throw(num, 1)">@num</button>
+                }
+                <span class="ck-spacer"></span>
+                <button class="sdt-btn sdt-d x01-key" disabled="@KeysOff" @onclick="() => Throw(25, 2)">D</button>
+                <button class="sdt-btn sdt-single x01-key x01-num" disabled="@KeysOff" @onclick="() => Throw(25, 1)">B</button>
+            </div>
+
+            <div class="x01-bottom ck-bottom">
+                <div class="x01-half">
+                    <button class="sdt-btn sdt-miss x01-key" disabled="@KeysOff" @onclick="() => Throw(0, 1)">Miss</button>
+                </div>
+                <div class="x01-half">
+                    <button class="btn-back x01-wide" disabled="@(!Game.CanUndo)" @onclick="Undo">← Back</button>
+                </div>
+                <div class="x01-half ck-enter">
+                    <button class="btn-enter x01-wide @(live.EndsGame ? "btn-enter-finish" : "")"
+                            disabled="@(!Game.CanEnter)" @onclick="Enter">@EnterLabel(live)</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            @* Bowler: only the bull counts *@
+            <div class="ek-keys ek-bowl">
+                <button class="sdt-btn sdt-single x01-key x01-num" disabled="@KeysOff" @onclick="() => Throw(25, 1)">25<small>1 wkt</small></button>
+                <button class="sdt-btn sdt-d x01-key" disabled="@KeysOff" @onclick="() => Throw(25, 2)">BULL<small>2 wkts</small></button>
+                <button class="sdt-btn sdt-miss x01-key" disabled="@KeysOff" @onclick="() => Throw(0, 1)">Miss</button>
+            </div>
+
+            <div class="x01-bottom ek-bottom">
+                <div class="x01-half">
+                    <button class="btn-back x01-wide" disabled="@(!Game.CanUndo)" @onclick="Undo">← Back</button>
+                </div>
+                <div class="x01-half">
+                    <button class="btn-enter x01-wide @(live.EndsInnings ? "btn-enter-finish" : "")"
+                            disabled="@(!Game.CanEnter)" @onclick="Enter">@EnterLabel(live)</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public EnglishCricketGame Game { get; set; } = null!;
+
+    /// <summary>Raised after every change so the host page can refresh (setup lock, status).</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    [Parameter] public EventCallback OnPlayAgain { get; set; }
+
+    private bool KeysOff => !Game.CanAddDart;
+
+    private Task Throw(int number, int multiplier)
+    {
+        Game.AddDart(new DartThrow(number, multiplier));
+        return OnChanged.InvokeAsync();
+    }
+
+    private Task Enter()
+    {
+        Game.Enter();
+        return OnChanged.InvokeAsync();
+    }
+
+    private Task Undo()
+    {
+        Game.Undo();
+        return OnChanged.InvokeAsync();
+    }
+
+    private string EnterLabel(EnglishTurnPreview live)
+    {
+        if (live.EndsGame) return "✔ Target passed";
+        if (live.EndsInnings) return Game.Innings == 1 ? "✔ All out — swap" : "✔ All out";
+        return $"Enter ({Game.CurrentDarts.Count} / 3)";
+    }
+
+    private static string DartLabel(DartThrow d)
+    {
+        if (d.Number == 0) return "0";
+        if (d.Number == 25) return d.Multiplier == 2 ? "DB" : "25";
+        return d.Multiplier switch { 2 => $"D{d.Number}", 3 => $"T{d.Number}", _ => d.Number.ToString() };
+    }
+}

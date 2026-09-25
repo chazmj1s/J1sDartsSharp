@@ -1,7 +1,7 @@
 namespace J1sDartSharp.Models;
 
 /// <summary>
-/// Represents one dart thrown in an ochre.
+/// Represents one dart thrown in a trip to the oche.
 /// Number = board segment (0=miss, 1-20, 25=bull).
 /// Multiplier = 1 single / 2 double / 3 triple (bull max = 2).
 /// Score = Number * Multiplier.

@@ -1,351 +1,468 @@
-@page "/x01/{startScore}"
+@page "/x01"
+@page "/x01/{StartScore:int}"
 @using J1sDartSharp.Models
 @using J1sDartSharp.Services
 @inject SessionHistoryService History
 
+@*
+    01 scoring — Practice (one side, saved to History) or Match (two sides,
+    alternating turns, scoreboard only). Scoring rules live in X01Game.
+
+    Layout: side column | 6-column pad | side column. Each side column shows
+    that side's trips to the oche as "scored / remaining" (latest 10, aligned
+    with the pad rows) and, beside the bottom two rows, its finishing routes.
+*@
+
 <div class="game-page x01-page">
 
-    @if (_session is null)
+    @* ── Setup (locked once the first dart is in) ─────────────────────── *@
+    <div class="x01-setup">
+        <div class="x01-seg">
+            <button class="x01-chip @On(!_match)" disabled="@Locked" @onclick="() => SetMatch(false)">Practice</button>
+            <button class="x01-chip @On(_match)" disabled="@Locked" @onclick="() => SetMatch(true)">Match</button>
+        </div>
+        <div class="x01-seg">
+            <span class="x01-seg-label">In</span>
+            <button class="x01-chip @On(_in == InMode.SingleIn)" disabled="@Locked" @onclick="() => SetIn(InMode.SingleIn)">Single</button>
+            <button class="x01-chip @On(_in == InMode.DoubleIn)" disabled="@Locked" @onclick="() => SetIn(InMode.DoubleIn)">Double</button>
+        </div>
+        <div class="x01-seg">
+            <span class="x01-seg-label">Out</span>
+            <button class="x01-chip @On(_out == OutMode.SingleOut)" disabled="@Locked" @onclick="() => SetOut(OutMode.SingleOut)">Single</button>
+            <button class="x01-chip @On(_out == OutMode.DoubleOut)" disabled="@Locked" @onclick="() => SetOut(OutMode.DoubleOut)">Double</button>
+        </div>
+        <div class="x01-seg">
+            @foreach (var score in StartOptions)
+            {
+                var s = score;
+                <button class="x01-chip @On(_start == s)" disabled="@Locked" @onclick="() => SetStart(s)">@s</button>
+            }
+        </div>
+    </div>
+
+    @if (_match && !Locked)
     {
-        <div class="start-screen">
-            <div class="mode-selector">
-                <button class="mode-btn @(_selectedMode == InMode.SingleIn ? "mode-active" : "")"
-                        @onclick='() => _selectedMode = InMode.SingleIn'>
-                    <span class="mode-label">SIDO</span>
-                    <span class="mode-desc">Single In · Double Out</span>
-                </button>
-                <button class="mode-btn @(_selectedMode == InMode.DoubleIn ? "mode-active" : "")"
-                        @onclick='() => _selectedMode = InMode.DoubleIn'>
-                    <span class="mode-label">DIDO</span>
-                    <span class="mode-desc">Double In · Double Out</span>
-                </button>
-            </div>
-            <button class="btn btn-primary btn-start-x01" @onclick="StartSession">
-                Start @StartScore — @(_selectedMode == InMode.SingleIn ? "SIDO" : "DIDO")
-            </button>
+        <div class="x01-names">
+            <input class="x01-name-input" maxlength="12" value="@_names[0]"
+                   @onchange="e => Rename(0, e.Value?.ToString())" aria-label="Left side name" />
+            <span class="x01-names-vs">vs</span>
+            <input class="x01-name-input" maxlength="12" value="@_names[1]"
+                   @onchange="e => Rename(1, e.Value?.ToString())" aria-label="Right side name" />
         </div>
     }
-    else if (_session.IsComplete)
+
+    <div class="x01-status">
+        <span class="x01-status-text">@StatusText</span>
+        @if (Locked && !_game.IsOver)
+        {
+            if (_confirmNew)
+            {
+                <span class="x01-confirm">
+                    Discard this game?
+                    <button class="x01-link" @onclick="NewGame">Yes</button>
+                    <button class="x01-link" @onclick="() => _confirmNew = false">No</button>
+                </span>
+            }
+            else
+            {
+                <button class="x01-link" @onclick="() => _confirmNew = true">New game</button>
+            }
+        }
+    </div>
+
+    @if (_game.IsOver)
     {
+        @* ── Result ──────────────────────────────────────────────────── *@
         <div class="result-card">
             <div class="result-icon">🏆</div>
-            <h3>Leg Complete!</h3>
-            <div class="result-mode-tag">@(_session.InMode == InMode.SingleIn ? "SIDO" : "DIDO")</div>
-            <div class="stat-grid">
-                @if (_session.InMode == InMode.DoubleIn)
+            @if (_match)
+            {
+                <h3>@_game.Winner!.Name wins!</h3>
+                <div class="result-mode-tag">@_game.ModeTag · @_game.StartScore</div>
+                <div class="x01-match-result">
+                    <span></span>
+                    @foreach (var side in _game.Sides) { <span class="x01-mr-head">@side.Name</span> }
+                    <span class="x01-mr-label">Left</span>
+                    @foreach (var side in _game.Sides) { <span>@side.Remaining</span> }
+                    <span class="x01-mr-label">Darts</span>
+                    @foreach (var side in _game.Sides) { <span>@side.DartsThrown</span> }
+                    <span class="x01-mr-label">Trips to the oche</span>
+                    @foreach (var side in _game.Sides) { <span>@side.OcheTrips</span> }
+                    <span class="x01-mr-label">Avg / oche</span>
+                    @foreach (var side in _game.Sides) { <span>@side.ThreeDartAverage.ToString("F1")</span> }
+                    <span class="x01-mr-label">Busts</span>
+                    @foreach (var side in _game.Sides) { <span>@side.Busts</span> }
+                </div>
+            }
+            else if (_saved is not null)
+            {
+                <h3>Leg Complete!</h3>
+                <div class="result-mode-tag">@_saved.ModeTag · @_saved.StartScore</div>
+                <div class="stat-grid">
+                    @if (_saved.InMode == InMode.DoubleIn)
+                    {
+                        <div class="stat-item"><span class="stat-label">Darts to double-in</span><span class="stat-value">@_saved.DartsToDoubleIn</span></div>
+                        <div class="stat-item"><span class="stat-label">Time to double-in</span><span class="stat-value">@FormatDuration(_saved.TimeToDoubleIn)</span></div>
+                    }
+                    <div class="stat-item"><span class="stat-label">Avg / oche</span><span class="stat-value">@_saved.AveragePerOche.ToString("F1")</span></div>
+                    <div class="stat-item"><span class="stat-label">Darts thrown</span><span class="stat-value">@_saved.DartsThrown</span></div>
+                    <div class="stat-item"><span class="stat-label">Trips to the oche</span><span class="stat-value">@_saved.OcheTrips</span></div>
+                    <div class="stat-item"><span class="stat-label">Finishing dart</span><span class="stat-value">@OrdinalDart(_saved.FinishingDart)</span></div>
+                    <div class="stat-item"><span class="stat-label">Time to check out</span><span class="stat-value">@FormatDuration(_saved.TimeToDoubleOut)</span></div>
+                    <div class="stat-item"><span class="stat-label">Busts</span><span class="stat-value">@_saved.BustCount</span></div>
+                    <div class="stat-item"><span class="stat-label">Duration</span><span class="stat-value">@FormatDuration(_saved.Duration)</span></div>
+                </div>
+                @if (_saveError is not null)
                 {
-                    <div class="stat-item"><span class="stat-label">Darts to double-in</span><span class="stat-value">@_session.DartsToDoubleIn</span></div>
-                    <div class="stat-item"><span class="stat-label">Time to double-in</span><span class="stat-value">@FormatDuration(_session.TimeToDoubleIn)</span></div>
+                    <p class="x01-save-error">⚠ @_saveError</p>
                 }
-                <div class="stat-item"><span class="stat-label">Avg / ochre</span><span class="stat-value">@_session.AveragePerOchre.ToString("F1")</span></div>
-                <div class="stat-item"><span class="stat-label">Total darts</span><span class="stat-value">@_session.TotalDarts</span></div>
-                <div class="stat-item"><span class="stat-label">Finishing dart</span><span class="stat-value">@OrdinalDart(_session.FinishingDart)</span></div>
-                <div class="stat-item"><span class="stat-label">Time to double-out</span><span class="stat-value">@FormatDuration(_session.TimeToDoubleOut)</span></div>
-                <div class="stat-item"><span class="stat-label">Busts</span><span class="stat-value">@_session.BustCount</span></div>
-                <div class="stat-item"><span class="stat-label">Duration</span><span class="stat-value">@FormatDuration(_session.Duration)</span></div>
-            </div>
+            }
             <div class="result-actions">
-                <button class="btn btn-primary" @onclick="StartSession">Play Again</button>
-                <a href="/history" class="btn btn-secondary">View History</a>
+                <button class="btn btn-primary" @onclick="NewGame">Play Again</button>
+                <button class="btn btn-secondary" @onclick="UndoFinish">↶ Undo last dart</button>
+                @if (!_match)
+                {
+                    <a href="/history" class="btn btn-secondary">View History</a>
+                }
             </div>
         </div>
     }
     else
     {
-        <!-- ── Single stats bar — always visible once session starts ── -->
-        <div class="x01-stats-bar">
-            @if (!_session.DoubleInAchieved)
-            {
-                <span>🎯 Double-in</span>
-                <span class="stats-bar-sep">|</span>
-                <span>Darts <strong>@_session.DartsToDoubleIn</strong></span>
-            }
-            else
-            {
-                <span>Left <strong class="stats-val-left">@_session.RemainingScore</strong></span>
-                <span class="stats-bar-sep">|</span>
-                <span>Scored <strong class="stats-val-scored">@_liveScored</strong></span>
-                <span class="stats-bar-sep">|</span>
-                <span>Out <strong class="stats-val-out">@_liveRemaining</strong></span>
-                <span class="stats-bar-sep">|</span>
-                <span>Avg <strong>@_session.AveragePerOchre.ToString("F1")</strong></span>
-                <span class="stats-bar-sep">|</span>
-                <span>Ochres <strong>@_session.ScoringOchres</strong></span>
-            }
-        </div>
+        @* ── Board ───────────────────────────────────────────────────── *@
+        var live = _game.Live;
+        var current = _game.CurrentSide;
 
-        <!-- History + checkout — only once scoring starts -->
-        @if (_session.DoubleInAchieved && (_session.OchreLog.Any() || _checkouts is not null))
-        {
-                <div class="x01-info-row">
-                    <div class="x01-history">
-                        @foreach (var entry in _session.OchreLog.AsEnumerable().Reverse().Take(5))
-                        {
-                            <div class="log-row">
-                                <span class="log-num">#@entry.OchreNumber</span>
-                                <span class="log-score">@entry.Score</span>
-                                <span class="log-remaining">→ @entry.RemainingAfter</span>
-                            </div>
-                        }
-                    </div>
-                    @if (_checkouts is not null)
+        <div class="x01-board @(_match ? "is-match" : "is-practice")">
+
+            @for (var i = 0; i < _game.Sides.Count; i++)
+            {
+                var side = _game.Sides[i];
+                var col = i == 0 ? "x01-col-left" : "x01-col-right";
+                var active = _match && side == current;
+                var isCurrent = side == current;
+                var hasLive = isCurrent && _game.CurrentDarts.Count > 0;
+                var trips = side.Trips.TakeLast(hasLive ? 9 : 10);
+                var routes = RoutesFor(side);
+
+                <div class="x01-side-head @col @(active ? "is-active" : "")">
+                    @if (_match)
                     {
-                        <div class="x01-checkout">
-                        <div class="co-label">Out options</div>
-                        @foreach (var route in _checkouts.Routes)
+                        <div class="x01-side-name">@side.Name</div>
+                    }
+                    <div class="x01-side-left">@(isCurrent && !live.IsBust ? live.Remaining : side.Remaining)</div>
+                    <div class="x01-side-sub">
+                        @(side.DartsThrown + (isCurrent ? _game.CurrentDarts.Count : 0)) darts ·
+                        @side.OcheTrips @(side.OcheTrips == 1 ? "trip" : "trips")
+                    </div>
+                    <div class="x01-side-sub">avg @side.ThreeDartAverage.ToString("F1")</div>
+                </div>
+
+                <div class="x01-trips @col @(active ? "is-active" : "")">
+                    @foreach (var trip in trips)
+                    {
+                        <div class="x01-trip @(trip.IsBust ? "is-bust" : "")">
+                            <span class="x01-trip-scored">@(trip.IsBust ? "X" : trip.Score.ToString())</span>
+                            <span class="x01-trip-sep">/</span>
+                            <span class="x01-trip-left">@trip.RemainingAfter</span>
+                        </div>
+                    }
+                    @if (hasLive)
+                    {
+                        <div class="x01-trip is-live @(live.IsBust ? "is-bust" : "")">
+                            <span class="x01-trip-scored">@(live.IsBust ? "X" : live.Scored.ToString())</span>
+                            <span class="x01-trip-sep">/</span>
+                            <span class="x01-trip-left">@live.Remaining</span>
+                        </div>
+                    }
+                </div>
+
+                <div class="x01-outs @col">
+                    @foreach (var route in routes)
+                    {
+                        <div class="x01-route">
+                            @foreach (var dart in route)
                             {
-                                <div class="log-row">
-                                    @foreach (var dart in route)
-                                    {
-                                        <span class="co-dart @DartClass(dart)">@dart</span>
-                                    }
-                                    @for (int i = route.Length; i < 3; i++)
-                                    {
-                                        <span class="co-dart co-skip">—</span>
-                                    }
-                                </div>
+                                <span class="x01-route-dart @DartClass(dart)">@dart</span>
                             }
                         </div>
                     }
                 </div>
             }
 
-        <!-- Single pad instance throughout — callbacks route via code -->
-        <div class="pad-section">
-            <DartInputPad NumberPad="X01Numbers"
-                          TwoColumn="true"
-                          LiveRemaining="@(_session.DoubleInAchieved ? _liveRemaining : -1)"
-                          LegComplete="@_session.IsComplete"
-                          OnOchreCommitted="OnOchreCommitted"
-                          OnDartAdded="OnDartAdded"
-                          OnDartRemoved="OnDartRemoved"
-                          OnBust="OnBustTapped"
-                          OnBack="AbandonSession" />
+            @* Current turn: three dart slots + turn total *@
+            <div class="x01-slots">
+                @for (var d = 0; d < 3; d++)
+                {
+                    var idx = d;
+                    var dart = idx < _game.CurrentDarts.Count ? _game.CurrentDarts[idx] : (DartThrow?)null;
+                    <div class="dart-slot @(dart.HasValue ? "filled" : "") @(idx == _game.CurrentDarts.Count ? "active" : "")">
+                        <span class="slot-label">@(idx + 1)</span>
+                        @if (dart.HasValue)
+                        {
+                            <span class="slot-val">@DartLabel(dart.Value)</span>
+                        }
+                        else
+                        {
+                            <span class="slot-empty">—</span>
+                        }
+                    </div>
+                }
+                <div class="slot-total @(live.IsBust ? "is-bust" : "")">
+                    @(live.IsBust ? "X" : _game.CurrentDarts.Count > 0 ? live.Scored.ToString() : "")
+                </div>
+            </div>
+
+            @* Numbers: [T][D][20..11]  [10..1][D][T] *@
+            <div class="x01-keys">
+                @for (var r = 0; r < 10; r++)
+                {
+                    var hi = 20 - r;
+                    var lo = 10 - r;
+                    <button class="sdt-btn sdt-t x01-key" disabled="@KeysOff" @onclick="() => Throw(hi, 3)">T</button>
+                    <button class="sdt-btn sdt-d x01-key" disabled="@KeysOff" @onclick="() => Throw(hi, 2)">D</button>
+                    <button class="sdt-btn sdt-single x01-key x01-num" disabled="@KeysOff" @onclick="() => Throw(hi, 1)">@hi</button>
+                    <button class="sdt-btn sdt-single x01-key x01-num" disabled="@KeysOff" @onclick="() => Throw(lo, 1)">@lo</button>
+                    <button class="sdt-btn sdt-d x01-key" disabled="@KeysOff" @onclick="() => Throw(lo, 2)">D</button>
+                    <button class="sdt-btn sdt-t x01-key" disabled="@KeysOff" @onclick="() => Throw(lo, 3)">T</button>
+                }
+            </div>
+
+            @* Bottom: [Bull][D] [← Back] / [Miss][Bust] [Enter] *@
+            <div class="x01-bottom">
+                <div class="x01-half">
+                    <button class="sdt-btn sdt-single x01-key x01-num" disabled="@KeysOff" @onclick="() => Throw(25, 1)">BULL</button>
+                    <button class="sdt-btn sdt-d x01-key" disabled="@KeysOff" @onclick="() => Throw(25, 2)">D</button>
+                </div>
+                <div class="x01-half">
+                    <button class="btn-back x01-wide" disabled="@(!_game.CanUndo)" @onclick="Undo">← Back</button>
+                </div>
+                <div class="x01-half">
+                    <button class="sdt-btn sdt-miss x01-key" disabled="@KeysOff" @onclick="() => Throw(0, 1)">Miss</button>
+                    <button class="sdt-btn sdt-bust x01-key @(live.IsBust ? "is-armed" : "")"
+                            disabled="@(!_game.CanDeclareBust)" @onclick="Bust">Bust</button>
+                </div>
+                <div class="x01-half">
+                    <button class="btn-enter x01-wide @(live.IsFinished ? "btn-enter-finish" : "")"
+                            disabled="@(!_game.CanEnter)" @onclick="EnterAsync">
+                        @EnterLabel
+                    </button>
+                </div>
+            </div>
         </div>
     }
 </div>
 
 @code {
-    [Parameter] public string StartScore { get; set; } = "501";
+    /// <summary>Optional preselect from an old link such as /x01/301.</summary>
+    [Parameter] public int? StartScore { get; set; }
 
-    private static readonly int[] X01Numbers =
-    {
-        20, 19, 18, 17, 16, 15, 14, 13,
-        12, 11, 10,  9,  8,  7,  6,  5,
-         4,  3,  2,  1, 25
-    };
+    private X01Game _game = null!;
+    private X01Session? _saved;
+    private string? _saveError;
+    private bool _confirmNew;
+    private int? _appliedStartScore;
+    private bool _initialised;
 
-    private X01Session? _session;
-    private int _liveRemaining;
-    private int _liveScored;
-    private int _ochreStartRemaining;
-    private bool _isBust;
-    private CheckoutSuggestion? _checkouts;
-    private InMode _selectedMode;
-    private int _dartInOchre = 0;  // tracks 1, 2, 3 within current ochre
+    // Setup — defaults: practice, 501, single in, double out
+    private bool _match;
+    private int _start = 501;
+    private InMode _in = InMode.SingleIn;
+    private OutMode _out = OutMode.DoubleOut;
+    private readonly string[] _names = ["Home", "Away"];
 
-    private GameType GameType =>
-        StartScore == "301" ? GameType.ThreeOhOne : GameType.FiveOhOne;
+    private bool Locked => _game.HasStarted;
+
+    private bool KeysOff => !_game.CanAddDart;
+
+    private int[] StartOptions => _match ? new[] { 301, 501, 801 } : new[] { 301, 501 };
 
     protected override void OnParametersSet()
     {
-        _session = null;
-        _selectedMode = StartScore == "301" ? InMode.DoubleIn : InMode.SingleIn;
-    }
-
-    private void StartSession()
-    {
-        _session = new X01Session(GameType, _selectedMode);
-        _liveRemaining = _session.RemainingScore;
-        _ochreStartRemaining = _liveRemaining;
-        _liveScored = 0;
-        _isBust = false;
-        UpdateCheckout();
-    }
-
-    // ── Single dart callback — routes based on phase ──────────────────────────
-
-    private void OnDartAdded(DartThrow dart)
-    {
-        if (_session is null) return;
-
-        if (!_session.DoubleInAchieved)
-        {
-            // Double-in phase: count dart, only score if it's the opening double
-            _session.DartsToDoubleIn++;
-            if (dart.Multiplier == 2)
-            {
-                _session.DoubleInAchieved = true;
-                _session.DoubleInAt = DateTime.Now;
-                _ochreStartRemaining = _session.RemainingScore;
-                _liveScored = dart.Score;
-                _liveRemaining = _session.RemainingScore - dart.Score;
-                UpdateCheckout();
-            }
-            // Non-doubles before the opening double don't affect score display
-        }
-        else
-        {
-            // Scoring phase
-            _dartInOchre++;
-            var newRemaining = _liveRemaining - dart.Score;
-            _liveScored += dart.Score;
-            _isBust = newRemaining < 0 || newRemaining == 1;
-            _liveRemaining = newRemaining;
-
-            // Check for a finish — double that takes remaining to exactly zero
-            if (newRemaining == 0 && dart.Multiplier == 2)
-            {
-                _session.RemainingScore = 0;
-                _session.FinishingDart = _dartInOchre;
-                _session.DoubleOutAchieved = true;
-                _session.DoubleOutAt = DateTime.Now;
-                _session.CompletedAt = DateTime.Now;
-                _session.IsComplete = true;
-                _ = History.SaveX01SessionAsync(_session);
-            }
-
-            UpdateCheckout();
-        }
-
-        StateHasChanged();
-    }
-
-    private void OnDartRemoved(DartThrow dart)
-    {
-        if (_session is null) return;
-
-        if (_session.DoubleInAchieved && dart.Multiplier == 2 && _session.ScoringOchres == 0 && _liveScored == dart.Score)
-        {
-            // Undoing the opening double — flip back to double-in phase
-            _session.DoubleInAchieved = false;
-            _session.DoubleInAt = null;
-            _session.DartsToDoubleIn--;
-            _liveRemaining = _session.RemainingScore;
-            _liveScored = 0;
-            _isBust = false;
-        }
-        else if (_session.DoubleInAchieved)
-        {
-            _liveRemaining += dart.Score;
-            _liveScored = Math.Max(0, _liveScored - dart.Score);
-            _dartInOchre = Math.Max(0, _dartInOchre - 1);
-            _isBust = _liveRemaining < 0 || _liveRemaining == 1;
-        }
-        else
-        {
-            _session.DartsToDoubleIn--;
-        }
-
-        UpdateCheckout();
-        StateHasChanged();
-    }
-
-    // ── Ochre committed — routes based on phase ───────────────────────────────
-
-    private async Task OnOchreCommitted(List<DartThrow> darts)
-    {
-        if (_session is null) return;
-
-        // Already finished via live double-out detection
-        if (_session.IsComplete) return;
-
-        if (!_session.DoubleInAchieved)
-        {
-            // Whole ochre of misses during double-in — nothing to score, just clear
+        if (_initialised && StartScore == _appliedStartScore)
             return;
-        }
 
-        if (_isBust)
+        _initialised = true;
+        _appliedStartScore = StartScore;
+
+        if (StartScore is 301 or 501)
+            _start = StartScore.Value;
+        else if (StartScore == 801)
         {
-            _session.BustCount++;
-            _liveRemaining = _ochreStartRemaining;
-            _isBust = false;
-        }
-        else
-        {
-            ApplyScoringDarts(darts);
+            _start = 801;
+            _match = true;
         }
 
-        _ochreStartRemaining = _session.RemainingScore;
-        _liveRemaining = _session.RemainingScore;
-        _liveScored = 0;
-        _dartInOchre = 0;
-        UpdateCheckout();
-
-        if (_session.IsComplete)
-            await History.SaveX01SessionAsync(_session);
+        NewGame();
     }
 
-    private void ApplyScoringDarts(List<DartThrow> darts)
+    // ── Setup ────────────────────────────────────────────────────────────────
+
+    private void NewGame()
     {
-        if (_session is null) return;
+        var sides = _match ? new[] { _names[0], _names[1] } : new[] { "You" };
+        _game = new X01Game(_start, _in, _out, sides);
+        _saved = null;
+        _saveError = null;
+        _confirmNew = false;
+    }
 
-        // For DIDO, the scoring darts start from the opening double
-        var scoringDarts = _session.InMode == InMode.DoubleIn && !_session.OchreLog.Any()
-            ? darts.SkipWhile(d => d.Multiplier != 2).ToList()
-            : darts;
+    private void SetMatch(bool match)
+    {
+        if (Locked) return;
+        _match = match;
+        if (!match && _start == 801)
+            _start = 501;   // 801 is match play only
+        NewGame();
+    }
 
-        var ochreScore = scoringDarts.Sum(d => d.Score);
-        var newRemaining = _session.RemainingScore - ochreScore;
+    private void SetIn(InMode mode)
+    {
+        if (Locked) return;
+        _in = mode;
+        NewGame();
+    }
 
-        if (newRemaining < 0 || newRemaining == 1)
-        {
-            _session.BustCount++;
+    private void SetOut(OutMode mode)
+    {
+        if (Locked) return;
+        _out = mode;
+        NewGame();
+    }
+
+    private void SetStart(int score)
+    {
+        if (Locked) return;
+        _start = score;
+        NewGame();
+    }
+
+    private void Rename(int index, string? name)
+    {
+        var clean = string.IsNullOrWhiteSpace(name) ? (index == 0 ? "Home" : "Away") : name.Trim();
+        _names[index] = clean;
+        if (index < _game.Sides.Count)
+            _game.Sides[index].Name = clean;
+    }
+
+    // ── Turn actions ─────────────────────────────────────────────────────────
+
+    private void Throw(int number, int multiplier)
+    {
+        _confirmNew = false;
+        _game.AddDart(new DartThrow(number, multiplier));
+    }
+
+    private void Undo() => _game.Undo();
+
+    private void Bust() => _game.DeclareBust();
+
+    private async Task EnterAsync()
+    {
+        if (!_game.Enter() || !_game.IsOver || _match)
             return;
-        }
 
-        var ochreNum = _session.ScoringOchres + 1;
-        _session.OchreLog.Add(new X01OchreEntry(ochreNum, ochreScore, newRemaining));
-        _session.RemainingScore = newRemaining;
-
-        if (newRemaining == 0)
+        // Practice leg finished: save it to History.
+        _saved = _game.ToPracticeSession();
+        try
         {
-            var lastScoring = scoringDarts.LastOrDefault(d => d.Score > 0);
-            if (lastScoring.Multiplier == 2)
-            {
-                _session.DoubleOutAchieved = true;
-                _session.DoubleOutAt = DateTime.Now;
-                _session.CompletedAt = DateTime.Now;
-                _session.IsComplete = true;
-            }
-            else
-            {
-                _session.BustCount++;
-                _session.RemainingScore = _ochreStartRemaining;
-                _session.OchreLog.RemoveAt(_session.OchreLog.Count - 1);
-            }
+            await History.SaveX01SessionAsync(_saved);
+        }
+        catch (Exception ex)
+        {
+            _saveError = $"Couldn't save to History: {ex.Message}";
         }
     }
 
-    private void OnBustTapped()
+    /// <summary>Reopen a finished game (and take a practice leg back out of History).</summary>
+    private async Task UndoFinish()
     {
-        if (_session is null) return;
-        _session.BustCount++;
-        _liveRemaining = _ochreStartRemaining;
-        _liveScored = 0;
-        _dartInOchre = 0;
-        _isBust = false;
-        UpdateCheckout();
-        StateHasChanged();
+        if (_saved is not null)
+        {
+            var id = _saved.Id;
+            _saved = null;
+            _saveError = null;
+            try
+            {
+                await History.DeleteSessionAsync(id);
+            }
+            catch
+            {
+                // Leave the history row; the leg can still be corrected and re-saved.
+            }
+        }
+
+        _game.Undo();
     }
 
-    private void UpdateCheckout() =>
-        _checkouts = CheckoutService.GetCheckout(_liveRemaining);
+    // ── Display helpers ──────────────────────────────────────────────────────
 
-    private void AbandonSession() => _session = null;
-    private void DoNothing() { }
-
-    private string DartClass(string dart)
+    private string StatusText
     {
-        if (dart.StartsWith("T")) return "dart-triple";
-        if (dart.StartsWith("D")) return "dart-double";
-        if (dart == "25")         return "dart-bull-single";
+        get
+        {
+            if (_game.IsOver) return "";
+
+            var side = _game.CurrentSide;
+            var live = _game.Live;
+            var who = _match ? $"{side.Name} to throw · " : "";
+
+            if (live.IsBust) return who + "Bust — tap Enter, or Back to fix";
+            if (live.IsFinished) return who + "Game shot! Tap Enter to confirm";
+            if (!_game.IsOpenNow(side)) return who + "Needs a double to start scoring";
+            return who + $"Dart {Math.Min(_game.CurrentDarts.Count + 1, 3)} of 3";
+        }
+    }
+
+    private string EnterLabel
+    {
+        get
+        {
+            var live = _game.Live;
+            if (live.IsFinished) return "✔ Game shot";
+            if (live.IsBust) return "Enter · Bust";
+            return $"Enter ({_game.CurrentDarts.Count} / 3)";
+        }
+    }
+
+    /// <summary>
+    /// Finishing routes for a side: the thrower uses the darts left in this
+    /// turn; the other side is shown with a full three darts.
+    /// </summary>
+    private IReadOnlyList<string[]> RoutesFor(X01Side side)
+    {
+        if (!_game.IsOpenNow(side))
+            return [];
+
+        var doubleOut = _out == OutMode.DoubleOut;
+        if (side != _game.CurrentSide)
+            return CheckoutService.GetRoutes(side.Remaining, 3, doubleOut);
+
+        var live = _game.Live;
+        return live.IsBust || live.IsFinished
+            ? []
+            : CheckoutService.GetRoutes(live.Remaining, _game.DartsLeftInTurn, doubleOut);
+    }
+
+    private static string On(bool on) => on ? "is-on" : "";
+
+    private static string DartLabel(DartThrow d)
+    {
+        if (d.Number == 0) return "0";
+        if (d.Number == 25) return d.Multiplier == 2 ? "DB" : "25";
+        return d.Multiplier switch { 2 => $"D{d.Number}", 3 => $"T{d.Number}", _ => d.Number.ToString() };
+    }
+
+    private static string DartClass(string dart)
+    {
+        if (dart.StartsWith('T')) return "dart-triple";
+        if (dart.StartsWith('D')) return "dart-double";
+        if (dart == "25") return "dart-bull-single";
         return "dart-single";
     }
 
     private static string OrdinalDart(int d) => d switch { 1 => "1st", 2 => "2nd", 3 => "3rd", _ => "—" };
 
-    private string FormatDuration(TimeSpan? ts) =>
+    private static string FormatDuration(TimeSpan? ts) =>
         ts.HasValue ? $"{(int)ts.Value.TotalMinutes}m {ts.Value.Seconds}s" : "—";
 }

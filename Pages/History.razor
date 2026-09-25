@@ -26,8 +26,8 @@
                 <h3 class="section-title">🏏 Cricket</h3>
                 <div class="stat-grid">
                     <div class="stat-item"><span class="stat-label">Sessions</span><span class="stat-value">@_cricketStats.SessionsPlayed</span></div>
-                    <div class="stat-item"><span class="stat-label">Avg ochres</span><span class="stat-value">@_cricketStats.AvgOchres.ToString("F1")</span></div>
-                    <div class="stat-item"><span class="stat-label">Best ochres</span><span class="stat-value">@_cricketStats.BestOchres</span></div>
+                    <div class="stat-item"><span class="stat-label">Avg trips to the oche</span><span class="stat-value">@_cricketStats.AvgOches.ToString("F1")</span></div>
+                    <div class="stat-item"><span class="stat-label">Best trips to the oche</span><span class="stat-value">@_cricketStats.BestOches</span></div>
                     <div class="stat-item"><span class="stat-label">Avg marks</span><span class="stat-value">@_cricketStats.AvgTotalMarks.ToString("F1")</span></div>
                 </div>
             </section>
@@ -62,12 +62,12 @@
                         </span>
                         @if (session is CricketSession c && c.IsComplete)
                         {
-                            <span class="session-detail">@c.OchreCount ochres · @c.TotalMarks marks</span>
+                            <span class="session-detail">@c.VariantLabel · @c.OcheCount trips · MPR @c.Mpr.ToString("F2")</span>
                         }
                         else if (session is X01Session x && x.IsComplete)
                         {
                             <span class="session-detail">
-                                Avg @x.AveragePerOchre.ToString("F1") · out @FormatDuration(x.TimeToDoubleOut)
+                                @x.ModeTag · Avg @x.AveragePerOche.ToString("F1") · out @FormatDuration(x.TimeToDoubleOut)
                             </span>
                         }
                         <button class="session-delete" @onclick="() => DeleteSession(session.Id)">✕</button>
@@ -105,6 +105,7 @@
         GameType.Cricket    => "Cricket",
         GameType.ThreeOhOne => "301",
         GameType.FiveOhOne  => "501",
+        GameType.EightOhOne => "801",
         _ => g.ToString()
     };
 

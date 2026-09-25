@@ -1,90 +1,12 @@
 @page "/"
-@using J1sDartSharp.Models
-@using J1sDartSharp.Services
 @inject NavigationManager Nav
-@inject SessionHistoryService History
 
-<div class="selector-page">
-
-    <div class="selector-hero">
-        <div class="hero-bullseye">🎯</div>
-        <h1 class="hero-title">DARTS</h1>
-        <p class="hero-sub">Practice Tracker</p>
-    </div>
-
-    <div class="selector-cards">
-
-        <button class="sel-card sel-cricket" @onclick='() => Nav.NavigateTo("/cricket")'>
-            <div class="sel-card-inner">
-                <div class="sel-card-number">CR</div>
-                <div class="sel-card-name">Cricket</div>
-                <div class="sel-card-stats">
-                    <span>@_cricketSessions played</span>
-                    @if (_cricketBest > 0)
-                    {
-                        <span>Best @_cricketBest ochres</span>
-                    }
-                </div>
-                <div class="sel-card-desc">Close 15–20 &amp; Bull · Track ochres &amp; marks</div>
-            </div>
-            <div class="sel-card-arrow">▶</div>
-        </button>
-
-        <button class="sel-card sel-301" @onclick='() => Nav.NavigateTo("/x01/301")'>
-            <div class="sel-card-inner">
-                <div class="sel-card-number">301</div>
-                <div class="sel-card-name">Three-Oh-One</div>
-                <div class="sel-card-stats">
-                    <span>@_s301Sessions played</span>
-                    @if (_s301Avg > 0)
-                    {
-                        <span>Avg @_s301Avg.ToString("F1") / ochre</span>
-                    }
-                </div>
-                <div class="sel-card-desc">Double-in · Double-out · Avg per ochre</div>
-            </div>
-            <div class="sel-card-arrow">▶</div>
-        </button>
-
-        <button class="sel-card sel-501" @onclick='() => Nav.NavigateTo("/x01/501")'>
-            <div class="sel-card-inner">
-                <div class="sel-card-number">501</div>
-                <div class="sel-card-name">Five-Oh-One</div>
-                <div class="sel-card-stats">
-                    <span>@_s501Sessions played</span>
-                    @if (_s501Avg > 0)
-                    {
-                        <span>Avg @_s501Avg.ToString("F1") / ochre</span>
-                    }
-                </div>
-                <div class="sel-card-desc">Double-in · Double-out · Avg per ochre</div>
-            </div>
-            <div class="sel-card-arrow">▶</div>
-        </button>
-
-    </div>
-
-    <a href="/history" class="history-link">View full history &amp; stats →</a>
-
-</div>
+@*
+    The old Home (practice selector) page was dropped. "/" now just sends
+    the app to its default screen: Manage → Matches.
+*@
 
 @code {
-    private int _cricketSessions, _cricketBest;
-    private int _s301Sessions; private double _s301Avg;
-    private int _s501Sessions; private double _s501Avg;
-
-    protected override void OnInitialized()
-    {
-        var cs = History.GetCricketStats();
-        _cricketSessions = cs.SessionsPlayed;
-        _cricketBest     = cs.BestOchres;
-
-        var s301 = History.GetX01Stats(GameType.ThreeOhOne);
-        _s301Sessions = s301.SessionsPlayed;
-        _s301Avg      = s301.AvgScorePerOchre;
-
-        var s501 = History.GetX01Stats(GameType.FiveOhOne);
-        _s501Sessions = s501.SessionsPlayed;
-        _s501Avg      = s501.AvgScorePerOchre;
-    }
+    protected override void OnInitialized() =>
+        Nav.NavigateTo("/league/matches", replace: true);
 }
